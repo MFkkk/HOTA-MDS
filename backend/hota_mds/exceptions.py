@@ -1,3 +1,4 @@
+from django.db.models.deletion import ProtectedError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
@@ -12,6 +13,18 @@ def _extract_message(detail):
 
 
 def api_exception_handler(exc, context):
+    if isinstance(exc, ProtectedError):
+        labels = [str(obj) for obj in exc.protected_objects]
+        return Response(
+            {
+                "success": False,
+                "code": "CONFLICT",
+                "message": "该区域/产线存在产线/设备，无法删除",
+                "data": {"protectedObjects": labels},
+            },
+            status=409,
+        )
+
     response = exception_handler(exc, context)
     if response is None:
         return None

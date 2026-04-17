@@ -29,7 +29,9 @@ class AdminAuthApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["success"])
-        self.assertIn("token", response.data["data"])
+        self.assertIn("access_token", response.data["data"])
+        self.assertEqual(response.data["data"]["token_type"], "Bearer")
+        self.assertIn("expires_in", response.data["data"])
         self.assertEqual(response.data["data"]["user"]["username"], "admin")
 
     def test_admin_login_rejects_non_staff_user(self):
@@ -48,13 +50,35 @@ class AdminAuthApiTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.data["code"], "UNAUTHORIZED")
 
+    def test_admin_logout_clears_session_and_logs_action(self):
+        login_response = self.client.post(
+            "/api/admin/auth/login",
+            {"username": "admin", "password": "admin123456"},
+            format="json",
+        )
+        token = login_response.data["data"]["access_token"]
+
+        response = self.client.post(
+            "/api/admin/auth/logout/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+
+    def test_admin_logout_rejects_without_token(self):
+        response = self.client.post("/api/admin/auth/logout/")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data["code"], "UNAUTHORIZED")
+
     def test_admin_me_returns_current_admin(self):
         login_response = self.client.post(
             "/api/admin/auth/login",
             {"username": "admin", "password": "admin123456"},
             format="json",
         )
-        token = login_response.data["data"]["token"]
+        token = login_response.data["data"]["access_token"]
 
         response = self.client.get(
             "/api/admin/auth/me",

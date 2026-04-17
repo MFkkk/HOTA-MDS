@@ -50,14 +50,27 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "hota_mds.wsgi.application"
 
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.mysql",
+#         "NAME": os.getenv("MYSQL_DATABASE", "hota_mds"),
+#         "USER": os.getenv("MYSQL_USER", "hota_user"),
+#         "PASSWORD": os.getenv("MYSQL_PASSWORD", "hota_password"),
+#         "HOST": os.getenv("MYSQL_HOST", "db"),
+#         "PORT": os.getenv("MYSQL_PORT", "3306"),
+#         "OPTIONS": {
+#             "charset": "utf8mb4",
+#         },
+#     }
+# }
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.getenv("MYSQL_DATABASE", "hota_mds"),
-        "USER": os.getenv("MYSQL_USER", "hota_user"),
-        "PASSWORD": os.getenv("MYSQL_PASSWORD", "hota_password"),
-        "HOST": os.getenv("MYSQL_HOST", "db"),
-        "PORT": os.getenv("MYSQL_PORT", "3306"),
+        "NAME": "mds-dev",
+        "USER": "root",
+        "PASSWORD": "123456",
+        "HOST": "192.168.36.86",
+        "PORT": "3306",
         "OPTIONS": {
             "charset": "utf8mb4",
         },

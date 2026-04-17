@@ -7,11 +7,17 @@ from .models import (
     Device,
     Employee,
     DisplayContentConfig,
+    Material,
     OperationLog,
+    Order,
+    PageModuleSwitch,
     ProductionLine,
     RuntimeParameterConfig,
     ScreenConfig,
 )
+
+
+RESERVED_FIELDS = ["reserved_1", "reserved_2", "reserved_3", "reserved_4", "reserved_5"]
 
 
 class CamelCaseModelSerializer(serializers.ModelSerializer):
@@ -45,7 +51,7 @@ class AreaSerializer(CamelCaseModelSerializer):
 
     class Meta:
         model = Area
-        fields = ["id", "code", "name", "parent_id", "parent_name", "is_active", "notes", "created_at", "updated_at"]
+        fields = ["id", "code", "name", "parent_id", "parent_name", "is_active", "notes", "created_at", "updated_at"] + RESERVED_FIELDS
 
 
 class ProductionLineSerializer(CamelCaseModelSerializer):
@@ -54,7 +60,7 @@ class ProductionLineSerializer(CamelCaseModelSerializer):
 
     class Meta:
         model = ProductionLine
-        fields = ["id", "code", "name", "area_id", "area_name", "is_active", "notes", "created_at", "updated_at"]
+        fields = ["id", "code", "name", "area_id", "area_name", "is_active", "notes", "created_at", "updated_at"] + RESERVED_FIELDS
 
 
 class DeviceSerializer(CamelCaseModelSerializer):
@@ -74,6 +80,7 @@ class DeviceSerializer(CamelCaseModelSerializer):
             "id",
             "code",
             "name",
+            "ip",
             "area_id",
             "area_name",
             "production_line_id",
@@ -83,7 +90,7 @@ class DeviceSerializer(CamelCaseModelSerializer):
             "notes",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
 
 class EmployeeSerializer(CamelCaseModelSerializer):
@@ -101,7 +108,7 @@ class EmployeeSerializer(CamelCaseModelSerializer):
             "notes",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
 
 class CodeMappingSerializer(CamelCaseModelSerializer):
@@ -117,7 +124,7 @@ class CodeMappingSerializer(CamelCaseModelSerializer):
             "notes",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
 
 class ScreenConfigSerializer(CamelCaseModelSerializer):
@@ -150,7 +157,7 @@ class ScreenConfigSerializer(CamelCaseModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
 
 class DisplayContentConfigSerializer(CamelCaseModelSerializer):
@@ -171,7 +178,7 @@ class DisplayContentConfigSerializer(CamelCaseModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
 
 class RuntimeParameterConfigSerializer(CamelCaseModelSerializer):
@@ -192,7 +199,7 @@ class RuntimeParameterConfigSerializer(CamelCaseModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -228,7 +235,7 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
             "notes",
             "created_at",
             "updated_at",
-        ]
+        ] + RESERVED_FIELDS
 
     def validate_secret_config(self, value):
         if value is None:
@@ -279,6 +286,74 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
             "hasEncryptedSecret": bool(obj.secret_ciphertext),
             "keyVersion": obj.secret_key_version or None,
         }
+
+
+class MaterialSerializer(CamelCaseModelSerializer):
+    class Meta:
+        model = Material
+        fields = [
+            "id",
+            "code",
+            "name",
+            "specification",
+            "unit",
+            "is_active",
+            "notes",
+            "created_at",
+            "updated_at",
+        ] + RESERVED_FIELDS
+
+
+class OrderSerializer(CamelCaseModelSerializer):
+    material_id = serializers.PrimaryKeyRelatedField(
+        source="material", queryset=Material.objects.all(), allow_null=True, required=False,
+    )
+    material_name = serializers.CharField(source="material.name", read_only=True)
+    production_line_id = serializers.PrimaryKeyRelatedField(
+        source="production_line", queryset=ProductionLine.objects.all(), allow_null=True, required=False,
+    )
+    production_line_name = serializers.CharField(source="production_line.name", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "order_no",
+            "material_id",
+            "material_name",
+            "production_line_id",
+            "production_line_name",
+            "quantity",
+            "completed_quantity",
+            "unit",
+            "status",
+            "status_label",
+            "planned_start",
+            "planned_end",
+            "actual_start",
+            "actual_end",
+            "is_active",
+            "notes",
+            "created_at",
+            "updated_at",
+        ] + RESERVED_FIELDS
+
+
+class PageModuleSwitchSerializer(CamelCaseModelSerializer):
+    class Meta:
+        model = PageModuleSwitch
+        fields = [
+            "id",
+            "screen_key",
+            "module_key",
+            "label",
+            "is_enabled",
+            "sort_order",
+            "notes",
+            "created_at",
+            "updated_at",
+        ] + RESERVED_FIELDS
 
 
 class OperationLogSerializer(CamelCaseModelSerializer):

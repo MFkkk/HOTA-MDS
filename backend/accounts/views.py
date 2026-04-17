@@ -42,11 +42,30 @@ def admin_login(request):
     return success_response(
         "login successful",
         {
-            "token": token,
-            "expiresIn": TOKEN_MAX_AGE_SECONDS,
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": TOKEN_MAX_AGE_SECONDS,
             "user": serialize_user(user),
         },
     )
+
+
+@api_view(["POST"])
+def admin_logout(request):
+    user, error = _authenticate_admin_token(request)
+    if error is not None:
+        return error
+
+    log_operation(
+        actor=user,
+        action="LOGOUT",
+        target_type="admin_auth",
+        target_id=user.pk,
+        target_label=user.get_username(),
+        request=request,
+        change_summary={},
+    )
+    return success_response("logout successful", None)
 
 
 @api_view(["GET"])

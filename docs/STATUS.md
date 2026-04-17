@@ -2,29 +2,33 @@
 
 ## 1. 当前阶段
 
-当前处于 M2 收尾阶段，本轮完成了 M2 的最小后台前端界面，现已具备从 M2 转入 M3 的条件。
+**M2 已全部完成，可以正式进入 M3。**
 
-当前已具备的 M2 最小后台能力：
+已具备的 M2 全部后台能力：
 
 - 管理员登录
 - 设备台账管理
 - 员工台账管理
 - 产线台账管理
 - 区域台账管理
+- 物料台账管理
+- 订单台账管理
 - 编码映射管理
 - 左右屏配置管理
+- 页面模块开关管理（独立模型）
+- 展示内容配置管理
+- 运行参数配置管理
 - 数据源配置管理
 - 基础操作日志
 - 最小后台前端界面
+- 正式 MySQL 全量冒烟回归通过
 
-本阶段要求：
+下一步：
 
-- 仅推进 M2 范围内的后台基础能力，不提前进入 M3/M4/M5。
-- 已完成本轮最小后台管理 API，但尚未实现后台页面、缓存层、mock 展示 API 或大屏业务页面。
+- 进入 M3：标准数据模型、缓存层与 mock 展示 API。
 - 不接真实外部系统。
 - 不实现报修、3D 仿真或内部 Web 报表。
 - 前端仍不得直连外部系统。
-- 数据源异常兜底、缓存层、mock 展示 API 与大屏业务页面留在后续里程碑。
 
 ## 2. 已知信息
 
@@ -138,8 +142,11 @@ P3：
 ## 5. 下一步行动
 
 1. 下一轮建议进入 M3：标准数据模型、缓存层与 mock 展示 API。
+
 2. M3 仍不要接真实外部系统，先基于标准缓存模型和 mock 数据把展示数据链路跑通。
+
 3. 后台继续沿用本轮已完成的最小管理界面，不无必要重构。
+
 4. 数据源异常兜底与最近一次成功数据保留能力应在 M3/M6 路径内提前考虑。
 
 ## 6. 本轮更新记录
@@ -230,23 +237,23 @@ P3：
 - backend：新增 `/api/admin/employees` 系列接口，并纳入统一管理员鉴权、统一响应结构和操作日志体系。
 - frontend：后台控制台新增“员工台账”入口，可直接维护员工号、姓名、角色和启用状态。
 - docs：已同步更新 `DECISIONS.md`、`DB_MODEL_DRAFT.md`、`API_CONTRACT.md`，记录员工表补充原因和接口约束。
-## 15. 本轮收尾状态
+
+## 15. 本轮收尾状态（M2 最终版）
 
 ### 当前阶段
 
-- 当前仍处于 M2 收尾阶段。
-- M2 最小后台能力已经补齐到管理员可维护台账和配置的程度。
-- 本轮在既有 M2 基础上补充了缺失的员工台账，不进入 M3，不接真实数据源，不进入大屏展示。
+- **M2 已全部完成**，可以正式进入 M3。
+- 本轮在既有 M2 基础上补齐了订单/物料主数据模型、独立页面模块开关模型，并以正式 MySQL 完成全量冒烟回归。
 
 ### 本轮已完成
 
-- 新增员工表 `Employee`，字段包含 `employee_no`、`name`、`role`、`is_active`、`notes`。
-- 员工号格式限制为仅允许英文和数字。
-- 员工角色固定为 `employee`、`team_leader`、`supervisor`。
-- 新增员工台账后台接口 `/api/admin/employees`，纳入现有管理员鉴权、统一响应结构与操作日志。
-- 后台最小前端界面增加“员工台账”入口，可新增、编辑、删除员工记录。
-- 已同步更新 `API_CONTRACT.md`、`DB_MODEL_DRAFT.md`、`DECISIONS.md`、`HANDOFF.md`。
-- 已完成迁移、自动化测试、前端构建和接口冒烟验证。
+- 新增 Material 物料台账模型（code、name、specification、unit、is_active、notes + 5 预留字段）。
+- 新增 Order 订单台账模型（order_no、material FK PROTECT、production_line FK PROTECT、quantity、completed_quantity、unit、status 四元组、planned_start/end、actual_start/end + 5 预留字段）。
+- 新增 PageModuleSwitch 独立模型（screen_key + module_key 联合唯一、label、is_enabled、sort_order + 5 预留字段）。
+- 新增 /api/admin/materials、/api/admin/orders、/api/admin/page-module-switches 三套管理接口。
+- 前端后台控制台新增“物料台账”、“订单台账”和“页面模块开关”入口。
+- 27/27 后端 SQLite 测试通过；npm run build 通过。
+- 正式 MySQL 全量冒烟回归 20/20 通过。
 
 ### 未完成
 
@@ -254,14 +261,43 @@ P3：
 - 尚未接入任何真实外部系统。
 - 尚未实现大屏展示链路中的“最近一次成功数据兜底”运行态能力。
 - 尚未实现员工与部门、班组、用户账号之间的扩展关系。
+- ScreenConfig 中的 module_settings JSON 字段仍保留，未删除；新的独立 PageModuleSwitch 为正式来源，后续 M3/M4 应优先读取 PageModuleSwitch。
 
 ### 当前已知问题
 
-- 当前生产数据库仍未实际联调，验证主要基于 `hota_mds.test_settings` 与本地测试链路完成。
 - 员工台账目前仅覆盖最小字段，不包含组织关系、联系方式、班次等扩展信息。
-- 本轮 shell 冒烟验证中，`APIClient` 需显式指定 `HTTP_HOST=localhost` 才能稳定复用本地测试环境，请继续沿用该方式。
+- shell 冒烟验证中 APIClient 需显式指定 HTTP_HOST=localhost，后续继续沿用。
+- Order 模型的 planned_start/end、actual_start/end 当前为可空 DateTimeField，前端传入格式为文本框，后续可升级。
+- 一个订单是否绝对不会同时分配到多条产线仍未确认；当前模型为单产线 FK。
 
 ### 下一个最优先任务
 
-- 进入 M3，先实现标准化缓存模型、mock 数据装载和左右屏展示 API。
-- 优先把“数据源异常时返回最近一次成功数据”的兜底机制落到后端缓存与展示接口，不接真实数据源。
+- 正式进入 M3：标准数据模型、缓存层与 mock 展示 API。
+- 第一优先级把“最近一次成功数据兜底”机制落到后端缓存与展示接口，不接真实数据源。
+
+## 16. 本轮更新记录
+
+- 本轮继续停留在 M2 收尾阶段，根据表结构扩展需求完成以下调整，不进入 M3，不接真实数据源。
+- backend：Device 模型新增 ip 字段（CharField, max_length=64），用于记录设备 IP 地址。
+- backend：新增 ReservedFieldsMixin 抽象模型，提供 reserved_1 到 reserved_5 五个通用预留字段（CharField, max_length=255）。
+- backend：以下 9 个业务模型均已继承 ReservedFieldsMixin，每张表新增 5 个预留字段：Area、ProductionLine、Device、Employee、CodeMapping、ScreenConfig、DisplayContentConfig、RuntimeParameterConfig、DataSourceConfig。
+- backend：OperationLog 为系统日志表，不加预留字段。
+- backend：所有序列化器已同步暴露 ip（仅 Device）和 reserved_1 ~ reserved_5 字段。
+- backend：新增迁移文件 backoffice/migrations/0004。
+- frontend：设备台账列表新增 IP 列，表单新增设备IP输入框。
+- frontend：所有非只读资源的编辑表单均新增预留字段1~预留字段5输入框。
+- 验证结果：14/14 后端测试通过；npm run build 通过。
+
+## 17. 本轮更新记录
+
+- 本轮完成 M2 最后收尾：补齐订单/物料主数据模型、独立页面模块开关模型，并通过正式 MySQL 全量冒烟回归。
+- backend：新增 Material 物料台账模型（code、name、specification、unit、is_active、notes + 预留字段）。
+- backend：新增 Order 订单台账模型（order_no、material FK、production_line FK、quantity、completed_quantity、unit、status、planned_start/end、actual_start/end、is_active、notes + 预留字段）。订单状态支持 planned / in_progress / completed / cancelled 四种。Material 和 ProductionLine 通过 PROTECT 外键保护。
+- backend：新增 PageModuleSwitch 独立模型（screen_key、module_key、label、is_enabled、sort_order、notes + 预留字段），screen_key + module_key 联合唯一约束，取代 ScreenConfig.module_settings JSON 字段承担模块开关职责。
+- backend：新增 `/api/admin/materials`、`/api/admin/orders`、`/api/admin/page-module-switches` 三套管理接口，纳入统一鉴权、响应结构和操作日志体系。
+- backend：新增迁移文件 backoffice/migrations/0006_material_order_pagemoduleswitch。
+- frontend：后台控制台"基础台账"分组新增"物料台账"和"订单台账"入口；"大屏配置"分组新增"页面模块开关"入口。
+- 验证结果：27/27 后端测试通过（SQLite）；npm run build 通过。
+- MySQL 冒烟回归：migrate 到正式 MySQL 后，20/20 冒烟检查全部通过（登录、me、区域、产线、设备、员工、物料、订单、编码映射、左右屏配置、页面模块开关、欢迎展示配置、运行参数配置、数据源配置、操作日志、健康检查）。
+- 至此 M2 全部规划内容已完成，可以正式进入 M3。
+

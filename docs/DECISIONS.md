@@ -133,3 +133,71 @@
 影响：
 - `Employee` 只承载台账信息，不参与当前管理员登录认证。
 - 后续如需做员工自助登录、审批链或组织关系，再单独设计关联模型。
+
+---
+
+## 2026-04-17（M2 最终收尾）
+
+### 决策：新增 Material 和 Order 独立主数据模型，而不是在 Device 或其他现有表上扩展
+原因：
+- PRD 和 DOCS_OVERVIEW 在 M2 规划中明确需要物料和订单台账能力。
+- 物料和订单有独立的业务实体和字段集，不应混入设备或产线表。
+- 独立模型有利于后续 M3/M4 将订单和物料与排产数据、展示数据关联。
+
+影响：
+- 新增 `Material` 和 `Order` 两张独立表，均继承 `ReservedFieldsMixin` 和 `TimestampedModel`。
+- Order 通过 `ForeignKey(PROTECT)` 关联 Material 和 ProductionLine，删除物料或产线前必须先处理关联订单。
+- 后续如需支持多产线订单（一个订单分配到多条产线），需将单产线 FK 改为多对多关系。
+
+### 决策：Order 与 ProductionLine 的关系当前采用单产线 FK，不做多对多
+原因：
+- 当前尚未确认一个订单是否会同时分配到多条产线。
+- 先采用最简单的单产线 FK，降低模型和前端表单复杂度。
+- 如果后续确认需要多产线，可以通过新增中间表升级。
+
+影响：
+- 当前 `Order.production_line` 为可空 FK，允许暂不指定产线。
+- 前端表单中产线选择为单选下拉框。
+- 如后续需要多对多，需数据迁移和前端表单改造。
+
+### 决策：Order 的状态字段采用固定四值枚举，不做可配置状态流
+原因：
+- 当前阶段订单台账仅作为主数据维护，不涉及工作流或审批。
+- 四种状态（计划、生产中、已完成、已取消）已覆盖订单全生命周期基本节点。
+- 先固定枚举可以保持 API、前端表单和数据库结构简单一致。
+
+影响：
+- `Order.status` 固定为 `planned`、`in_progress`、`completed`、`cancelled`。
+- 前后端均按固定选项实现，不开放后台自定义状态。
+- 如后续出现更复杂工单流转，需评估是否引入状态机或独立工序模型。
+
+### 决策：将 PageModuleSwitch 拆分为独立模型，不再依赖 ScreenConfig.module_settings JSON 字段
+原因：
+- ScreenConfig.module_settings 是一个 JSON 字段，缺乏结构化校验和独立的 CRUD 能力。
+- 页面模块开关是一个高频管理操作（启用/禁用某个展示模块），需要明确的接口和权限控制。
+- 独立模型支持联合唯一约束（screen_key + module_key），可以从数据库层面防止配置冲突。
+
+影响：
+- 新增 `PageModuleSwitch` 表，screen_key + module_key 联合唯一。
+- ScreenConfig 中的 `module_settings` JSON 字段仍保留但不再作为模块开关的正式来源。
+- 后续 M3/M4 中前端展示接口应优先读取 PageModuleSwitch 表。
+
+### 决策：所有新增业务模型继续继承 ReservedFieldsMixin，保持预留字段一致
+原因：
+- 上一轮已确定 9 个既有业务模型均具备 reserved_1 到 reserved_5 预留字段。
+- 新增的 Material、Order、PageModuleSwitch 应保持一致的扩展性。
+- 统一继承可以减少后续补字段的迁移成本。
+
+影响：
+- Material、Order、PageModuleSwitch 均包含 reserved_1 到 reserved_5 字段。
+- 前端编辑表单中均可维护预留字段。
+
+### 决策：M2 阶段以正式 MySQL 执行全量冒烟回归，不仅依赖 SQLite 测试
+原因：
+- 此前所有测试均基于 `hota_mds.test_settings`（SQLite），无法验证 MySQL 特有的行为（如字符集、排序规则、外键约束执行差异）。
+- M2 作为后台能力基线，需要在正式数据库配置上验证一次完整链路后才能确认可交付。
+- 冒烟回归覆盖登录、所有台账 CRUD、所有配置 CRUD、操作日志和健康检查，确保不遗漏。
+
+影响：
+- 已验证 20/20 冒烟检查通过，包括 Area、ProductionLine、Device、Employee、Material、Order、CodeMapping、ScreenConfig、PageModuleSwitch、DisplayContentConfig、RuntimeParameterConfig、DataSourceConfig、OperationLog、HealthCheck。
+- 后续 M3 开发可以直接在 MySQL 上运行，不再需要重复验证 M2 基础。

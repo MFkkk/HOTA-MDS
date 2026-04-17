@@ -309,3 +309,78 @@
 
 - 按既定计划进入 M3，先做标准化缓存模型、mock 数据装载和左右屏展示 API。
 - 第一优先级是把“最近一次成功数据兜底”机制做进缓存和展示接口，继续保持不接真实外部系统。
+
+
+## 17. 本轮交接记录
+
+- 本轮根据表结构扩展需求，为 Device 表新增 ip 字段，并为所有自定义业务表预留 5 个通用字段。
+- backend 新增 ReservedFieldsMixin 抽象模型（reserved_1 ~ reserved_5，CharField, max_length=255），9 个业务模型均已继承。
+- backend Device 模型新增 ip 字段（CharField, max_length=64），用于记录设备 IP 地址。
+- backend 所有对应序列化器已暴露新增字段，前端可通过 API 读写。
+- frontend 设备台账新增 IP 列和表单输入；所有非只读资源表单新增预留字段入口。
+- OperationLog 为系统日志表，不加预留字段。
+- 新增迁移文件 backoffice/migrations/0004。
+- 验证：14/14 后端测试通过；npm run build 通过。
+
+### 修改文件清单
+
+- backend/backoffice/models.py
+- backend/backoffice/serializers.py
+- backend/backoffice/tests.py
+- backend/backoffice/migrations/0004_area_reserved_1_area_reserved_2_area_reserved_3_and_more.py
+- frontend/src/adminResources.js
+- docs/STATUS.md
+- docs/HANDOFF.md
+
+### 建议下一轮优先任务
+
+- 按既定计划进入 M3，先做标准化缓存模型、mock 数据装载和左右屏展示 API。
+- 第一优先级是把最近一次成功数据兜底机制做进缓存和展示接口，继续保持不接真实外部系统。
+
+## 18. 本轮交接记录
+
+- 本轮完成 M2 最后收尾，补齐订单/物料主数据模型和独立页面模块开关模型，并通过正式 MySQL 全量冒烟回归。
+
+### 本轮目标
+
+- 将 M2 规划中缺失的订单（Order）与物料（Material）主数据模型落地。
+- 将"页面模块开关"从 ScreenConfig.module_settings JSON 字段拆分为独立模型 PageModuleSwitch。
+- 以正式 MySQL 配置跑一轮 M2 冒烟回归，覆盖登录、所有台账 CRUD、所有配置 CRUD、操作日志和健康检查。
+
+### 本轮实际完成
+
+- backend 新增 Material 模型、OrderSerializer / MaterialSerializer / PageModuleSwitchSerializer 序列化器、MaterialViewSet / OrderViewSet / PageModuleSwitchViewSet 视图集。
+- backend 新增 Order 模型，含 material FK (PROTECT)、production_line FK (PROTECT)、状态四元组、计划/实际时间四字段。
+- backend 新增 PageModuleSwitch 模型，screen_key + module_key 联合唯一约束。
+- 三套新接口 `/api/admin/materials`、`/api/admin/orders`、`/api/admin/page-module-switches` 均纳入统一鉴权、响应结构和操作日志。
+- 新增迁移文件 backoffice/migrations/0006_material_order_pagemoduleswitch。
+- frontend 后台控制台"基础台账"分组新增"物料台账"和"订单台账"；"大屏配置"分组新增"页面模块开关"。
+- 27/27 后端测试通过（SQLite）。
+- npm run build 通过。
+- 正式 MySQL 全量冒烟回归 20/20 通过。
+
+### 修改文件清单
+
+- backend/backoffice/models.py
+- backend/backoffice/serializers.py
+- backend/backoffice/views.py
+- backend/backoffice/urls.py
+- backend/backoffice/tests.py
+- backend/backoffice/migrations/0006_material_order_pagemoduleswitch.py
+- frontend/src/adminResources.js
+- docs/STATUS.md
+- docs/HANDOFF.md
+
+### 本轮未完成
+
+- 尚未进入 M3 的标准化缓存模型、mock 采集结果和左右屏展示 API。
+- ScreenConfig 中的 module_settings JSON 字段仍保留，未删除；新的 PageModuleSwitch 为正式来源。
+
+### 遇到的问题
+
+- 无阻塞性问题。sandbox 环境下 `makemigrations` 无输出，需 `required_permissions=["all"]` 执行；MySQL 冒烟中 `APIClient` 需显式指定 `HTTP_HOST=localhost`。
+
+### 建议下一轮优先任务
+
+- 正式进入 M3，按 DOCS_OVERVIEW 规划实现标准化缓存模型、mock 数据生成器、定时任务基础框架和面向前端的标准缓存读取 API。
+- 第一优先级把"最近一次成功数据兜底"机制落到后端缓存与展示接口。

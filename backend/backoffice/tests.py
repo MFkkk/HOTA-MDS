@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from .models import DataSourceConfig, OperationLog
+from .models import Area, DataSourceConfig, Device, Material, OperationLog, Order, PageModuleSwitch, ProductionLine
 
 
 class BackofficeApiTests(TestCase):
@@ -19,7 +19,7 @@ class BackofficeApiTests(TestCase):
             {"username": "admin", "password": "admin123456"},
             format="json",
         )
-        token = login_response.data["data"]["token"]
+        token = login_response.data["data"]["access_token"]
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
     def test_area_line_and_device_crud_flow(self):
@@ -44,6 +44,7 @@ class BackofficeApiTests(TestCase):
             {
                 "code": "D01",
                 "name": "贴标机",
+                "ip": "192.168.1.100",
                 "areaId": area_id,
                 "productionLineId": line_id,
                 "defaultStatus": "running",
@@ -52,11 +53,51 @@ class BackofficeApiTests(TestCase):
             format="json",
         )
         self.assertEqual(device_response.status_code, 201)
+        self.assertEqual(device_response.data["data"]["ip"], "192.168.1.100")
         self.assertEqual(device_response.data["data"]["productionLineName"], "一号线")
 
         list_response = self.client.get("/api/admin/devices")
         self.assertEqual(list_response.status_code, 200)
         self.assertEqual(list_response.data["data"]["total"], 1)
+
+    def test_device_list_supports_page_and_page_size(self):
+        area = self.client.post(
+            "/api/admin/areas",
+            {"code": "A-PAGE", "name": "分页区域", "isActive": True},
+            format="json",
+        ).data["data"]
+
+        line = self.client.post(
+            "/api/admin/production-lines",
+            {"code": "L-PAGE", "name": "分页产线", "areaId": area["id"], "isActive": True},
+            format="json",
+        ).data["data"]
+
+        for index in range(25):
+            self.client.post(
+                "/api/admin/devices",
+                {
+                    "code": f"DV{index:03d}",
+                    "name": f"设备{index:03d}",
+                    "ip": f"192.168.10.{index}",
+                    "areaId": area["id"],
+                    "productionLineId": line["id"],
+                    "defaultStatus": "running",
+                    "isActive": True,
+                },
+                format="json",
+            )
+
+        first_page = self.client.get("/api/admin/devices?page=1&pageSize=10")
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.data["data"]["total"], 25)
+        self.assertEqual(first_page.data["data"]["page"], 1)
+        self.assertEqual(first_page.data["data"]["pageSize"], 10)
+        self.assertEqual(len(first_page.data["data"]["items"]), 10)
+
+        third_page = self.client.get("/api/admin/devices?page=3&pageSize=10")
+        self.assertEqual(third_page.status_code, 200)
+        self.assertEqual(len(third_page.data["data"]["items"]), 5)
 
     def test_employee_crud_and_role_validation(self):
         create_response = self.client.post(
@@ -215,8 +256,267 @@ class BackofficeApiTests(TestCase):
 
     def test_operation_logs_record_admin_actions(self):
         self.client.post("/api/admin/areas", {"code": "A02", "name": "测试区"}, format="json")
-        response = self.client.get("/api/admin/operation-logs")
+        response = self.client.get("/api/admin/operation-logs?page=1&pageSize=10")
 
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(response.data["data"]["total"], 1)
+        self.assertEqual(response.data["data"]["page"], 1)
+        self.assertEqual(response.data["data"]["pageSize"], 10)
         self.assertTrue(OperationLog.objects.filter(action="CREATE", target_type="area").exists())
+
+    def test_delete_area_blocked_when_production_line_references_it(self):
+        area = self.client.post(
+            "/api/admin/areas",
+            {"code": "A-DEL-1", "name": "待删区域", "isActive": True},
+            format="json",
+        ).data["data"]
+        self.client.post(
+            "/api/admin/production-lines",
+            {"code": "L-DEL-1", "name": "关联产线", "areaId": area["id"], "isActive": True},
+            format="json",
+        )
+        delete_response = self.client.delete(f"/api/admin/areas/{area['id']}")
+        self.assertEqual(delete_response.status_code, 409)
+        self.assertEqual(delete_response.data["code"], "CONFLICT")
+        self.assertIn("protectedObjects", delete_response.data["data"])
+
+    def test_delete_area_allowed_after_clearing_line_reference(self):
+        area = self.client.post(
+            "/api/admin/areas",
+            {"code": "A-DEL-2", "name": "待删区域二", "isActive": True},
+            format="json",
+        ).data["data"]
+        line = self.client.post(
+            "/api/admin/production-lines",
+            {"code": "L-DEL-2", "name": "产线二", "areaId": area["id"], "isActive": True},
+            format="json",
+        ).data["data"]
+        clear = self.client.patch(
+            f"/api/admin/production-lines/{line['id']}",
+            {"areaId": None},
+            format="json",
+        )
+        self.assertEqual(clear.status_code, 200)
+        delete_response = self.client.delete(f"/api/admin/areas/{area['id']}")
+        self.assertEqual(delete_response.status_code, 200)
+
+    def test_delete_production_line_blocked_when_device_references_it(self):
+        area = self.client.post(
+            "/api/admin/areas",
+            {"code": "A-DEL-3", "name": "区域三", "isActive": True},
+            format="json",
+        ).data["data"]
+        line = self.client.post(
+            "/api/admin/production-lines",
+            {"code": "L-DEL-3", "name": "产线三", "areaId": area["id"], "isActive": True},
+            format="json",
+        ).data["data"]
+        self.client.post(
+            "/api/admin/devices",
+            {
+                "code": "D-DEL-3",
+                "name": "设备三",
+                "productionLineId": line["id"],
+                "defaultStatus": "stopped",
+                "isActive": True,
+            },
+            format="json",
+        )
+        delete_response = self.client.delete(f"/api/admin/production-lines/{line['id']}")
+        self.assertEqual(delete_response.status_code, 409)
+        self.assertEqual(delete_response.data["code"], "CONFLICT")
+
+
+    def test_material_crud(self):
+        create = self.client.post(
+            "/api/admin/materials",
+            {"code": "MAT-001", "name": "铝合金壳体", "specification": "200x100x50mm", "unit": "件", "isActive": True},
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201)
+        mat_id = create.data["data"]["id"]
+        self.assertEqual(create.data["data"]["code"], "MAT-001")
+
+        detail = self.client.get(f"/api/admin/materials/{mat_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data["data"]["specification"], "200x100x50mm")
+
+        update = self.client.patch(
+            f"/api/admin/materials/{mat_id}",
+            {"specification": "300x150x60mm"},
+            format="json",
+        )
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(update.data["data"]["specification"], "300x150x60mm")
+
+        list_resp = self.client.get("/api/admin/materials")
+        self.assertEqual(list_resp.status_code, 200)
+        self.assertEqual(list_resp.data["data"]["total"], 1)
+
+    def test_order_crud_with_material_and_line(self):
+        mat = self.client.post(
+            "/api/admin/materials",
+            {"code": "MAT-ORD", "name": "测试物料", "isActive": True},
+            format="json",
+        ).data["data"]
+
+        area = self.client.post(
+            "/api/admin/areas",
+            {"code": "A-ORD", "name": "订单区域", "isActive": True},
+            format="json",
+        ).data["data"]
+
+        line = self.client.post(
+            "/api/admin/production-lines",
+            {"code": "L-ORD", "name": "订单产线", "areaId": area["id"], "isActive": True},
+            format="json",
+        ).data["data"]
+
+        create = self.client.post(
+            "/api/admin/orders",
+            {
+                "orderNo": "SO-2025-0001",
+                "materialId": mat["id"],
+                "productionLineId": line["id"],
+                "quantity": "1000.00",
+                "completedQuantity": "0.00",
+                "unit": "件",
+                "status": "planned",
+                "plannedStart": "2025-07-01T08:00:00Z",
+                "plannedEnd": "2025-07-15T18:00:00Z",
+                "isActive": True,
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201)
+        self.assertEqual(create.data["data"]["orderNo"], "SO-2025-0001")
+        self.assertEqual(create.data["data"]["materialName"], "测试物料")
+        self.assertEqual(create.data["data"]["productionLineName"], "订单产线")
+        self.assertEqual(create.data["data"]["statusLabel"], "计划")
+
+        order_id = create.data["data"]["id"]
+        update = self.client.patch(
+            f"/api/admin/orders/{order_id}",
+            {"status": "in_progress", "completedQuantity": "250.00"},
+            format="json",
+        )
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(update.data["data"]["statusLabel"], "生产中")
+
+        list_resp = self.client.get("/api/admin/orders")
+        self.assertEqual(list_resp.status_code, 200)
+        self.assertEqual(list_resp.data["data"]["total"], 1)
+
+    def test_delete_material_blocked_when_order_references_it(self):
+        mat = self.client.post(
+            "/api/admin/materials",
+            {"code": "MAT-DEL", "name": "受保护物料", "isActive": True},
+            format="json",
+        ).data["data"]
+        self.client.post(
+            "/api/admin/orders",
+            {"orderNo": "SO-DEL-1", "materialId": mat["id"], "quantity": "100", "status": "planned"},
+            format="json",
+        )
+        delete_resp = self.client.delete(f"/api/admin/materials/{mat['id']}")
+        self.assertEqual(delete_resp.status_code, 409)
+        self.assertEqual(delete_resp.data["code"], "CONFLICT")
+
+    def test_page_module_switch_crud(self):
+        create = self.client.post(
+            "/api/admin/page-module-switches",
+            {
+                "screenKey": "left",
+                "moduleKey": "device_overview",
+                "label": "设备运行概览",
+                "isEnabled": True,
+                "sortOrder": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201)
+        self.assertEqual(create.data["data"]["screenKey"], "left")
+        self.assertEqual(create.data["data"]["moduleKey"], "device_overview")
+
+        switch_id = create.data["data"]["id"]
+        update = self.client.patch(
+            f"/api/admin/page-module-switches/{switch_id}",
+            {"isEnabled": False},
+            format="json",
+        )
+        self.assertEqual(update.status_code, 200)
+        self.assertFalse(update.data["data"]["isEnabled"])
+
+        list_resp = self.client.get("/api/admin/page-module-switches?screen_key=left")
+        self.assertEqual(list_resp.status_code, 200)
+        self.assertEqual(list_resp.data["data"]["total"], 1)
+
+    def test_page_module_switch_unique_constraint(self):
+        self.client.post(
+            "/api/admin/page-module-switches",
+            {"screenKey": "right", "moduleKey": "gantt_chart", "label": "甘特图", "sortOrder": 0},
+            format="json",
+        )
+        dup = self.client.post(
+            "/api/admin/page-module-switches",
+            {"screenKey": "right", "moduleKey": "gantt_chart", "label": "甘特图重复", "sortOrder": 1},
+            format="json",
+        )
+        self.assertEqual(dup.status_code, 400)
+
+
+class AreaLineDeviceCascadeTests(TestCase):
+    def test_area_deactivate_cascades_to_lines_and_devices(self):
+        area = Area.objects.create(code="CA1", name="区域一", is_active=True)
+        line = ProductionLine.objects.create(code="CL1", name="产线一", area=area, is_active=True)
+        device = Device.objects.create(
+            code="CD1",
+            name="设备一",
+            area=area,
+            production_line=line,
+            is_active=True,
+        )
+        area.is_active = False
+        area.save()
+        line.refresh_from_db()
+        device.refresh_from_db()
+        self.assertFalse(line.is_active)
+        self.assertFalse(device.is_active)
+
+    def test_production_line_area_change_updates_device_area(self):
+        area_a = Area.objects.create(code="CA2", name="区域甲", is_active=True)
+        area_b = Area.objects.create(code="CA3", name="区域乙", is_active=True)
+        line = ProductionLine.objects.create(code="CL2", name="产线二", area=area_a, is_active=True)
+        device = Device.objects.create(
+            code="CD2",
+            name="设备二",
+            area=area_a,
+            production_line=line,
+            is_active=True,
+        )
+        line.area = area_b
+        line.save()
+        device.refresh_from_db()
+        self.assertEqual(device.area_id, area_b.id)
+
+    def test_production_line_deactivate_cascades_to_devices(self):
+        area = Area.objects.create(code="CA4", name="区域四", is_active=True)
+        line = ProductionLine.objects.create(code="CL4", name="产线四", area=area, is_active=True)
+        device = Device.objects.create(
+            code="CD4",
+            name="设备四",
+            area=area,
+            production_line=line,
+            is_active=True,
+        )
+        line.is_active = False
+        line.save()
+        device.refresh_from_db()
+        self.assertFalse(device.is_active)
+
+    def test_device_inherits_area_from_production_line(self):
+        area = Area.objects.create(code="CA5", name="区域五", is_active=True)
+        line = ProductionLine.objects.create(code="CL5", name="产线五", area=area, is_active=True)
+        device = Device(code="CD5", name="设备五", production_line=line)
+        device.save()
+        self.assertEqual(device.area_id, area.id)

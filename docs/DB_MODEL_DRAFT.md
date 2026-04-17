@@ -31,21 +31,21 @@
 
 ### 3.1 设备 `device`
 
-| 字段 | 类型 | 是否必填 | 可先 mock | 等待外部资料 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| `id` | bigint | 是 | 是 | 否 | 主键 |
-| `device_code` | varchar(64) | 是 | 是 | 否 | 本系统设备编码 |
-| `device_name` | varchar(128) | 是 | 是 | 否 | 设备名称 |
-| `line_id` | bigint | 否 | 是 | 是 | 所属产线，需结合现场台账确认 |
-| `area_id` | bigint | 否 | 是 | 是 | 所属区域，需结合现场台账确认 |
-| `device_type` | varchar(64) | 否 | 是 | 是 | 设备类型 |
-| `status` | varchar(32) | 否 | 是 | 是 | 标准设备状态，建议枚举：`running`、`stopped`、`alarm`、`offline`、`unknown` |
-| `manufacturer` | varchar(128) | 否 | 是 | 否 | 厂商 |
-| `model_no` | varchar(128) | 否 | 是 | 否 | 型号 |
-| `is_active` | boolean | 是 | 是 | 否 | 是否启用 |
-| `remark` | varchar(512) | 否 | 是 | 否 | 备注 |
-| `created_at` | datetime | 是 | 是 | 否 | 创建时间 |
-| `updated_at` | datetime | 是 | 是 | 否 | 更新时间 |
+| 字段             | 类型           | 是否必填 | 可先 mock | 等待外部资料 | 说明                                                          |
+| -------------- | ------------ | ---- | ------- | ------ | ----------------------------------------------------------- |
+| `id`           | bigint       | 是    | 是       | 否      | 主键                                                          |
+| `device_code`  | varchar(64)  | 是    | 是       | 否      | 本系统设备编码                                                     |
+| `device_name`  | varchar(128) | 是    | 是       | 否      | 设备名称                                                        |
+| `line_id`      | bigint       | 否    | 是       | 是      | 所属产线，需结合现场台账确认                                              |
+| `area_id`      | bigint       | 否    | 是       | 是      | 所属区域，需结合现场台账确认                                              |
+| `device_type`  | varchar(64)  | 否    | 是       | 是      | 设备类型                                                        |
+| `status`       | varchar(32)  | 否    | 是       | 是      | 标准设备状态，建议枚举：`running`、`stopped`、`alarm`、`offline`、`unknown` |
+| `manufacturer` | varchar(128) | 否    | 是       | 否      | 厂商                                                          |
+| `model_no`     | varchar(128) | 否    | 是       | 否      | 型号                                                          |
+| `is_active`    | boolean      | 是    | 是       | 否      | 是否启用                                                        |
+| `remark`       | varchar(512) | 否    | 是       | 否      | 备注                                                          |
+| `created_at`   | datetime     | 是    | 是       | 否      | 创建时间                                                        |
+| `updated_at`   | datetime     | 是    | 是       | 否      | 更新时间                                                        |
 
 ### 3.2 产线 `production_line`
 
@@ -148,18 +148,18 @@
 
 ### 4.2 数据源配置 `data_source_config`
 
-| 字段 | 类型 | 是否必填 | 可先 mock | 等待外部资料 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| `id` | bigint | 是 | 是 | 否 | 主键 |
-| `source_code` | varchar(64) | 是 | 是 | 否 | 数据源编码 |
-| `source_name` | varchar(128) | 是 | 是 | 否 | 数据源名称 |
-| `source_type` | varchar(32) | 是 | 是 | 否 | 建议枚举：`opcua`、`modbus_tcp`、`sap_rfc`、`database`、`mock` |
-| `business_domain` | varchar(32) | 是 | 是 | 否 | 建议枚举：`device`、`production`、`scheduling`、`energy` |
-| `refresh_interval_seconds` | int | 是 | 是 | 否 | 默认 300 秒 |
-| `connection_config` | json | 否 | 是 | 是 | 连接配置，敏感信息需加密或引用环境密钥 |
-| `enabled` | boolean | 是 | 是 | 否 | 是否启用 |
-| `created_at` | datetime | 是 | 是 | 否 | 创建时间 |
-| `updated_at` | datetime | 是 | 是 | 否 | 更新时间 |
+| 字段                         | 类型           | 是否必填 | 可先 mock | 等待外部资料 | 说明                                                    |
+| -------------------------- | ------------ | ---- | ------- | ------ | ----------------------------------------------------- |
+| `id`                       | bigint       | 是    | 是       | 否      | 主键                                                    |
+| `source_code`              | varchar(64)  | 是    | 是       | 否      | 数据源编码                                                 |
+| `source_name`              | varchar(128) | 是    | 是       | 否      | 数据源名称                                                 |
+| `source_type`              | varchar(32)  | 是    | 是       | 否      | 建议枚举：`opcua`、`modbus_tcp`、`sap_rfc`、`database`、`mock` |
+| `business_domain`          | varchar(32)  | 是    | 是       | 否      | 建议枚举：`device`、`production`、`scheduling`、`energy`      |
+| `refresh_interval_seconds` | int          | 是    | 是       | 否      | 默认 300 秒                                              |
+| `connection_config`        | json         | 否    | 是       | 是      | 连接配置，敏感信息需加密或引用环境密钥                                   |
+| `enabled`                  | boolean      | 是    | 是       | 否      | 是否启用                                                  |
+| `created_at`               | datetime     | 是    | 是       | 否      | 创建时间                                                  |
+| `updated_at`               | datetime     | 是    | 是       | 否      | 更新时间                                                  |
 
 ### 4.3 左右屏配置 `screen_config`
 

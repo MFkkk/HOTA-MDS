@@ -210,6 +210,98 @@ class RuntimeParameterConfig(TimestampedModel):
             raise ValidationError("production_trend_window_hours must be greater than 0")
 
 
+class DeviceStatusSnapshot(TimestampedModel):
+    snapshot_key = models.CharField(max_length=32, unique=True)
+    total_count = models.PositiveIntegerField(default=0)
+    running_count = models.PositiveIntegerField(default=0)
+    abnormal_count = models.PositiveIntegerField(default=0)
+    status_breakdown = models.JSONField(default=dict, blank=True)
+    generated_at = models.DateTimeField()
+    source_updated_at = models.DateTimeField()
+    last_success_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["snapshot_key"]
+
+    def __str__(self):
+        return self.snapshot_key
+
+
+class ProductionSnapshot(TimestampedModel):
+    snapshot_key = models.CharField(max_length=32, unique=True)
+    total_target_quantity = models.PositiveIntegerField(default=0)
+    total_produced_quantity = models.PositiveIntegerField(default=0)
+    overall_completion_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    line_summaries = models.JSONField(default=list, blank=True)
+    trend_points = models.JSONField(default=list, blank=True)
+    generated_at = models.DateTimeField()
+    source_updated_at = models.DateTimeField()
+    last_success_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["snapshot_key"]
+
+    def __str__(self):
+        return self.snapshot_key
+
+
+class ScheduleSnapshot(TimestampedModel):
+    snapshot_key = models.CharField(max_length=32, unique=True)
+    line_schedules = models.JSONField(default=list, blank=True)
+    risk_summary = models.JSONField(default=dict, blank=True)
+    legend_items = models.JSONField(default=list, blank=True)
+    generated_at = models.DateTimeField()
+    source_updated_at = models.DateTimeField()
+    last_success_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["snapshot_key"]
+
+    def __str__(self):
+        return self.snapshot_key
+
+
+class EnergySnapshot(TimestampedModel):
+    snapshot_key = models.CharField(max_length=32, unique=True)
+    total_consumption = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    unit = models.CharField(max_length=16, default="kWh")
+    area_summaries = models.JSONField(default=list, blank=True)
+    generated_at = models.DateTimeField()
+    source_updated_at = models.DateTimeField()
+    last_success_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["snapshot_key"]
+
+    def __str__(self):
+        return self.snapshot_key
+
+
+class DataSourceHealthSnapshot(TimestampedModel):
+    STATUS_HEALTHY = "healthy"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_HEALTHY, "healthy"),
+        (STATUS_FAILED, "failed"),
+    ]
+
+    source_key = models.CharField(max_length=32, unique=True)
+    display_name = models.CharField(max_length=128)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_HEALTHY)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    is_stale = models.BooleanField(default=False)
+    fallback_in_use = models.BooleanField(default=False)
+    error_message = models.CharField(max_length=255, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["source_key"]
+
+    def __str__(self):
+        return self.source_key
+
+
 class DataSourceConfig(TimestampedModel):
     STORAGE_NONE = "none"
     STORAGE_ENV_REF = "env_ref"

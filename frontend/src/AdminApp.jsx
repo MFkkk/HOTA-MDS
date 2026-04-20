@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { ADMIN_TOKEN_STORAGE_KEY, apiRequest } from "./adminApi.js";
 import AdminConsole from "./AdminConsole.jsx";
 
-
 function LoginForm({ isSubmitting, message, onSubmit, password, setPassword, setUsername, username }) {
   return (
     <form className="login-form" onSubmit={onSubmit}>
@@ -40,7 +39,6 @@ function LoginForm({ isSubmitting, message, onSubmit, password, setPassword, set
     </form>
   );
 }
-
 
 function AdminApp({ pathname, navigate }) {
   const [username, setUsername] = useState("");
@@ -137,7 +135,9 @@ function AdminApp({ pathname, navigate }) {
         <section className="login-copy">
           <p className="eyebrow">HOTA MDS</p>
           <h1>后台管理入口</h1>
-          <p>本轮已提供最基础的后台界面，可直接维护区域、产线、设备、编码映射、屏幕配置、展示内容、运行参数、数据源配置和操作日志。</p>
+          <p>
+            当前阶段提供最小后台控制台，可维护区域、产线、设备、编码映射、屏幕配置、展示内容、运行参数、数据源配置、数据源健康状态和操作日志。
+          </p>
           <div className="quick-links" aria-label="基础路由">
             <a href="/admin/console">/admin/console</a>
             <a href="/screen/left">/screen/left</a>

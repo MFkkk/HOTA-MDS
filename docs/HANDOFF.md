@@ -93,8 +93,10 @@
 - 已新增后台管理员认证接口 `/api/admin/auth/login`、`/api/admin/auth/me`。
 - 已将前端 `/admin/login` 从占位页升级为最小可用登录页。
 - 已新增 M2 最小后台数据模型与管理 API。
+- 已新增 M3 标准化缓存快照、mock 数据装载命令、左右屏展示 API 与左右屏前端展示页。
 - 尚未接入外部系统。
-- 尚未实现后台业务配置与大屏真实数据页面。
+- 尚未进入真实数据源驱动的大屏页面联调。
+- 尚未把数据源健康状态接到后台前端控制台。
 
 ## 4. 下次开发前必须先阅读的文件
 
@@ -112,15 +114,14 @@
 
 ## 5. 建议下一轮优先任务
 
-下一轮建议继续留在 M2，不要直接接外部系统。
+下一轮建议继续留在 M3，不要直接接外部系统。
 
 建议顺序：
 
-1. 进入 M3：实现标准展示数据模型、缓存层和 mock 展示 API。
-2. 在不接真实外部系统的前提下，为左屏/右屏准备标准缓存读取接口。
-3. 为 mock 数据增加最近一次成功时间和数据源状态结构。
-4. 保持现有后台管理 API 和前端控制台稳定，不做无必要重构。
-5. M3 完成后，再进入大屏页面联调。
+1. 在现有最小后台控制台中补一个只读的数据源健康状态入口。
+2. 继续完善左右屏前端页面细节，但仍只消费 `/api/screens/left`、`/api/screens/right`，不依赖外部系统原始结构。
+3. 保持现有 M2 后台 API、M3 mock 快照结构和展示接口稳定，不做无必要重构。
+4. 在真实外部系统资料到位前，只扩标准缓存模型和 mock 链路，不让前端依赖外部原始结构。
 
 ## 6. 特别注意
 
@@ -309,3 +310,276 @@
 
 - 按既定计划进入 M3，先做标准化缓存模型、mock 数据装载和左右屏展示 API。
 - 第一优先级是把“最近一次成功数据兜底”机制做进缓存和展示接口，继续保持不接真实外部系统。
+
+## 17. 本轮交接记录
+
+- 本轮已正式从 M2 收尾推进到 M3 的第一个最小可交付目标。
+- 后端新增 5 类标准化缓存快照模型：
+  - `DeviceStatusSnapshot`
+  - `ProductionSnapshot`
+  - `ScheduleSnapshot`
+  - `EnergySnapshot`
+  - `DataSourceHealthSnapshot`
+- 后端新增 `backoffice/display_services.py`，统一处理 mock 数据生成、快照装载、默认配置兜底和左右屏展示数据拼装。
+- 后端新增公开展示接口：
+  - `/api/screens/left`
+  - `/api/screens/right`
+- 后端新增后台只读健康状态接口：
+  - `/api/admin/data-source-healths`
+- 后端新增管理命令：
+  - `python manage.py load_mock_screen_data`
+  - `python manage.py load_mock_screen_data --simulate-failure`
+- 当前兜底策略已经落地：
+  - mock 刷新成功时更新快照和数据源健康状态
+  - mock 刷新失败时仅更新健康状态为失败，不覆盖原快照
+  - 左右屏展示接口继续返回最近一次成功快照，并通过 `meta.usingFallback` 表示当前处于兜底
+- 本轮没有接任何真实外部系统，没有实现报修真实数据，没有实现 3D 仿真，没有进入内部 Web 报表。
+- 本轮验证已通过：
+  - `python -m compileall backoffice hota_mds`
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings`
+  - `npm run build`
+  - `python manage.py migrate --settings=hota_mds.test_settings`
+  - `python manage.py load_mock_screen_data --settings=hota_mds.test_settings`
+  - 本地读取 `/api/screens/left`、`/api/screens/right` 均成功
+  - 执行 `python manage.py load_mock_screen_data --simulate-failure --settings=hota_mds.test_settings` 后，右屏接口仍成功返回，且 `meta.usingFallback=True`
+- 本轮修改文件清单：
+  - `backend/backoffice/models.py`
+  - `backend/backoffice/serializers.py`
+  - `backend/backoffice/views.py`
+  - `backend/backoffice/urls.py`
+  - `backend/backoffice/display_services.py`
+  - `backend/backoffice/tests.py`
+  - `backend/backoffice/management/commands/load_mock_screen_data.py`
+  - `backend/backoffice/migrations/0004_datasourcehealthsnapshot_devicestatussnapshot_and_more.py`
+  - `backend/hota_mds/urls.py`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 18. 本轮交接记录
+
+- 本轮继续停留在 M3，并完成了第二个最小可交付目标：左右屏前端展示页正式接入标准展示 API，不再停留在占位页。
+- frontend 新增 `src/ScreenDisplay.jsx`，按 `screenKey` 区分左屏和右屏展示：
+  - 左屏展示欢迎信息、设备运行概览、产量执行概览、近 8 小时产量趋势、区域能耗概览和报修占位区
+  - 右屏展示未完工订单排产、延期风险概览和 3D 仿真预留区
+- frontend `src/App.jsx` 已切换为在 `/screen/left`、`/screen/right` 直接渲染真实屏幕组件。
+- frontend `src/styles.css` 已新增大屏样式，当前以全屏深色展示布局为主，适配桌面与窄屏场景。
+- 前端当前也实现了最小白屏保护：
+  - 首次加载成功后，如果后续接口请求失败，页面继续保留上一次成功内容
+  - 页面顶部会显示当前是否处于兜底数据展示中
+- 本轮没有改动后台管理 API 的行为，没有接真实外部系统，没有做报修真实接入，没有做 3D 仿真真实开发。
+- 本轮验证已通过：
+  - `npm run build`
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings`
+  - `http://127.0.0.1:8000/api/screens/left` 返回 200
+  - `http://127.0.0.1:3000/screen/left` 返回 200
+  - `http://127.0.0.1:3000/screen/right` 返回 200
+- 本轮本地运行地址：
+  - 前端：`http://127.0.0.1:3000/screen/left`
+  - 前端：`http://127.0.0.1:3000/screen/right`
+  - 后端展示 API：`http://127.0.0.1:8000/api/screens/left`
+  - 后端展示 API：`http://127.0.0.1:8000/api/screens/right`
+- 本轮修改文件清单：
+  - `frontend/src/App.jsx`
+  - `frontend/src/ScreenDisplay.jsx`
+  - `frontend/src/styles.css`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 19. 本轮交接记录
+
+- 本轮修复了左右屏在 IAB/浏览器内打开时白屏的问题。
+- 问题根因：
+  - 前端当前没有接入 `@vitejs/plugin-react`
+  - Vite/esbuild 仍按经典 JSX 运行时输出 `React.createElement(...)`
+  - 但项目中的 `.jsx` 文件并没有统一把 `React` 注入到运行时作用域
+  - 页面打开后直接报错 `React is not defined`，导致只剩网页标题，`#root` 里没有内容
+- 修复措施：
+  - 在 `frontend/vite.config.js` 中增加 `esbuild.jsxInject = 'import React from "react"'`
+  - 在 `frontend/src/main.jsx` 中将根节点包裹改为 `StrictMode`
+  - 重启前端 dev 服务和 preview 服务，使新配置生效
+- 验证结果：
+  - 通过无头浏览器抓到旧报错：`React is not defined`
+  - 修复并重启后，再次使用无头浏览器验证：
+    - `http://127.0.0.1:3000/screen/left` 已能渲染正文
+    - `http://127.0.0.1:4173/screen/left` 已能渲染正文
+  - 当前仍可见一条 404 资源日志，但不影响页面主内容渲染，属于非阻塞问题
+- 本轮修改文件清单：
+  - `frontend/src/main.jsx`
+  - `frontend/vite.config.js`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 20. 本轮交接记录
+
+- 本轮继续停留在 M3，目标是把“数据源健康状态”接到现有后台控制台，不涉及真实数据接入。
+- backend 调整：
+  - `GET /api/admin/data-source-healths` 现在在健康快照还不存在时会自动调用 mock 快照装载逻辑
+  - 这样后台第一次进入健康状态页时，不需要先手工执行 `load_mock_screen_data`
+- backend 测试补充：
+  - 新增健康状态接口自动补装 mock 快照的测试
+- frontend 调整：
+  - `frontend/src/adminResources.js` 新增只读资源 `dataSourceHealths`
+  - `frontend/src/AdminConsole.jsx` 已重写为干净版本，去掉历史乱码字符串，并支持按资源显示对应详情标题
+  - 后台控制台现在可直接查看数据源健康状态列表和详情
+- 本轮验证已通过：
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings`
+  - `npm run build`
+  - 本地实测 `GET /api/admin/data-source-healths` 返回 200 且 `total=4`
+  - `http://127.0.0.1:3000/admin/console` 返回 200
+- 本轮修改文件清单：
+  - `backend/backoffice/views.py`
+  - `backend/backoffice/tests.py`
+  - `frontend/src/adminResources.js`
+  - `frontend/src/AdminConsole.jsx`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 21. 本轮交接记录
+
+- 本轮继续停留在 M3，只做后台“数据源健康”页面的可读性优化，不扩展到真实数据源接入。
+- frontend 调整：
+  - 重写 `frontend/src/adminResources.js`，清理历史乱码资源定义
+  - 为“数据源健康”资源补充表格格式化和详情格式化
+  - `frontend/src/AdminConsole.jsx` 现已支持按资源定制表格单元格显示和只读详情显示
+- 当前“数据源健康”页的展示效果：
+  - 状态字段显示为“正常/失败”
+  - 布尔字段显示为“是/否”
+  - 时间字段显示为 `YYYY-MM-DD HH:mm:ss`
+  - 详情面板按名称、来源键、状态、最近成功、最近尝试、是否过期、是否使用兜底、错误信息、附加信息分项展示
+- 本轮验证已通过：
+  - `npm run build`
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings`
+  - 使用无头浏览器登录后台后进入“数据源健康”，列表和详情均按新的友好格式展示
+- 本轮修改文件清单：
+  - `frontend/src/adminResources.js`
+  - `frontend/src/AdminConsole.jsx`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 22. 本轮交接记录
+
+- 本轮目标：清理一期双屏展示与后台入口中仍残留的历史乱码，并修复左屏欢迎语/公司名显示为 `?` 的问题。
+- 范围控制：
+  - 没有接入真实外部系统
+  - 没有进入报修真实接入
+  - 没有做 3D 仿真开发
+  - 没有进入内部 Web 报表
+- frontend 调整：
+  - 重写 `frontend/src/AdminApp.jsx`，清理登录页与状态提示文案中的历史乱码
+  - 重写 `frontend/src/App.jsx`，清理根路由占位页标题与副标题文案
+  - 重写 `frontend/src/PlaceholderScreen.jsx`，清理快速入口区域的无障碍标签文案
+- backend 调整：
+  - `backend/backoffice/display_services.py` 新增展示文案兜底逻辑
+  - 当激活中的 `DisplayContentConfig.company_name` 或 `welcome_message` 只包含问号时，左/右屏接口自动回退到默认文案，而不是继续把坏值直接返回给前端
+- 测试补充：
+  - `backend/backoffice/tests.py` 新增用例，验证左屏接口在展示配置为 `????` / `????????` 时仍返回默认欢迎语和公司名
+- 本地环境处理：
+  - 已将当前 `hota_mds.test_settings` 测试库中 `DisplayContentConfig(config_key='default')` 的坏值修正为正常中文，当前运行中的 `127.0.0.1:8000` 服务已恢复正常输出
+- 本轮验证已通过：
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings`
+  - `npm run build`
+  - `GET http://127.0.0.1:8000/api/screens/left`
+  - 无头浏览器验证 `http://127.0.0.1:3000/admin/login`
+  - 无头浏览器验证 `http://127.0.0.1:3000/screen/left`
+- 当前可直接访问：
+  - 前端左屏：`http://127.0.0.1:3000/screen/left`
+  - 前端右屏：`http://127.0.0.1:3000/screen/right`
+  - 后台登录：`http://127.0.0.1:3000/admin/login`
+  - 后端左屏 API：`http://127.0.0.1:8000/api/screens/left`
+- 下一步建议：
+  - 继续留在 M3，优先把双屏剩余展示文案与状态枚举做一轮统一整理，确保外部参观双屏所有可见字段都来自稳定、可控的后端标准化输出
+- 本轮修改文件清单：
+  - `backend/backoffice/display_services.py`
+  - `backend/backoffice/tests.py`
+  - `frontend/src/AdminApp.jsx`
+  - `frontend/src/App.jsx`
+  - `frontend/src/PlaceholderScreen.jsx`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 23. 本轮交接记录
+
+- 本轮目标：把一期双屏中仍暴露给参观者的原始状态枚举收敛为后端标准化展示字段，让前端只负责渲染。
+- 范围控制：
+  - 没有接入真实外部系统
+  - 没有进入报修真实接入
+  - 没有做 3D 仿真开发
+  - 没有进入内部 Web 报表
+- backend 调整：
+  - `backend/backoffice/display_services.py` 新增设备状态展示映射 `DEVICE_STATUS_DISPLAY`
+  - 左屏 `deviceOverview` 新增 `statusItems`，标准输出“运行/停机/报警/离线”及对应数量与视觉强调色
+  - 右屏 `schedule.riskSummary` 新增 `items`，标准输出“正常/风险/延期/暂停”及对应数量、颜色、视觉强调色
+  - 为一期后段占位模块补充说明文案：
+    - `repairPlaceholder.description`
+    - `simulationPlaceholder.description`
+- frontend 调整：
+  - 重写 `frontend/src/ScreenDisplay.jsx`
+  - 左屏设备状态区不再遍历原始 `statusBreakdown` 键，而是直接渲染后端给出的 `statusItems`
+  - 右屏风险概览不再在前端硬编码风险标签，而是直接渲染后端给出的 `riskSummary.items`
+  - 报修占位和 3D 预留区改为直接显示接口返回的说明文案
+- 测试补充：
+  - `backend/backoffice/tests.py` 补充断言，验证：
+    - 左屏接口会返回标准化 `statusItems`
+    - 左屏接口会返回 `repairPlaceholder.description`
+    - 右屏接口会返回标准化 `riskSummary.items`
+    - 右屏接口会返回 `simulationPlaceholder.description`
+- 本轮验证已通过：
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings`
+  - `npm run build`
+  - `GET http://127.0.0.1:8000/api/screens/left`
+  - `GET http://127.0.0.1:8000/api/screens/right`
+  - 无头浏览器验证 `http://127.0.0.1:3000/screen/left`
+  - 无头浏览器验证 `http://127.0.0.1:3000/screen/right`
+- 当前验证结果：
+  - 左屏设备状态已经显示为“运行/停机/报警/离线”，不再出现 `running/stopped/alarm/offline`
+  - 右屏风险汇总已经显示为“正常/风险/延期/暂停”
+  - 右屏 3D 预留区说明文案显示正常
+- 下一步建议：
+  - 继续留在 M3，优先把双屏剩余动态字段的展示命名也统一收口到后端标准化输出，进一步降低前端拼装和解释业务含义的比例
+- 本轮修改文件清单：
+  - `backend/backoffice/display_services.py`
+  - `backend/backoffice/tests.py`
+  - `frontend/src/ScreenDisplay.jsx`
+  - `docs/STATUS.md`
+  - `docs/HANDOFF.md`
+
+## 24. 暂停前交接摘要
+
+### 本轮目标
+
+- 在不扩展一期范围的前提下，把双屏中仍直接暴露给参观者的原始状态枚举收敛为后端标准化展示字段。
+
+### 本轮实际完成
+
+- 后端新增左屏设备状态展示映射，接口返回 `statusItems`。
+- 后端新增右屏风险汇总展示映射，接口返回 `riskSummary.items`。
+- 后端为报修占位和 3D 预留区补充说明文案字段。
+- 前端重写 `frontend/src/ScreenDisplay.jsx`，改为直接消费后端标准化字段。
+- 已完成 `python manage.py test accounts backoffice --settings=hota_mds.test_settings`、`npm run build`、左右屏接口读取和浏览器冒烟验证。
+
+### 本轮未完成
+
+- 未接入真实外部系统。
+- 未进入内部 Web 报表。
+- 未做报修真实接入。
+- 未做 3D 仿真真实开发。
+- 未完成双屏其余动态字段的全部标准化收口。
+
+### 修改文件清单
+
+- `backend/backoffice/display_services.py`
+- `backend/backoffice/tests.py`
+- `frontend/src/ScreenDisplay.jsx`
+- `docs/STATUS.md`
+- `docs/HANDOFF.md`
+- `docs/DECISIONS.md`
+
+### 遇到的问题
+
+- 双屏展示链路中仍有部分字段历史上由前端自行解释状态含义，不符合“后端负责标准化、前端负责展示”的项目规则。
+- 文档早期历史内容存在编码乱码，阅读体验较差，但不影响本轮新增记录和继续交接。
+- 当前验证环境仍以本地 mock + `hota_mds.test_settings` 为主，尚未具备真实外部系统联调依据。
+
+### 建议下一轮优先任务
+
+- 继续留在 M3，优先把双屏剩余动态字段的展示名称、状态枚举和提示语继续统一收敛到后端标准化输出。

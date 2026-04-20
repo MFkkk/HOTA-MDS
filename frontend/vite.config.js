@@ -2,6 +2,9 @@ import { defineConfig } from "vite";
 
 
 export default defineConfig({
+  esbuild: {
+    jsxInject: `import React from "react"`,
+  },
   server: {
     host: "0.0.0.0",
     proxy: {
@@ -10,5 +13,8 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: "0.0.0.0",
   },
 });

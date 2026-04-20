@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
-from .models import DataSourceConfig, OperationLog
+from .display_services import DEFAULT_DISPLAY_CONTENT, load_mock_display_data
+from .models import DataSourceConfig, DisplayContentConfig, OperationLog
 
 
 class BackofficeApiTests(TestCase):
@@ -220,3 +222,98 @@ class BackofficeApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(response.data["data"]["total"], 1)
         self.assertTrue(OperationLog.objects.filter(action="CREATE", target_type="area").exists())
+
+    def test_screen_left_api_returns_mock_snapshot_payload(self):
+        load_mock_display_data()
+
+        response = self.client.get("/api/screens/left")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["screen"]["screenKey"], "left")
+        self.assertIn("deviceOverview", response.data["data"]["content"])
+        self.assertIn("productionOverview", response.data["data"]["content"])
+        self.assertIn("energyOverview", response.data["data"]["content"])
+        self.assertEqual(
+            response.data["data"]["content"]["deviceOverview"]["statusItems"],
+            [
+                {"key": "running", "label": "运行", "accent": "green", "count": 4},
+                {"key": "stopped", "label": "停机", "accent": "amber", "count": 1},
+                {"key": "alarm", "label": "报警", "accent": "red", "count": 1},
+                {"key": "offline", "label": "离线", "accent": "muted", "count": 0},
+            ],
+        )
+        self.assertEqual(
+            response.data["data"]["content"]["repairPlaceholder"]["description"],
+            "当前阶段仅保留展示位置，不作为一期前段阻塞项。",
+        )
+        self.assertIsNotNone(response.data["data"]["meta"]["lastSuccessfulAt"])
+        self.assertFalse(response.data["data"]["meta"]["usingFallback"])
+
+    def test_screen_right_api_keeps_last_successful_data_when_failure_occurs(self):
+        initial_result = load_mock_display_data()
+        initial_generated_at = initial_result["snapshots"]["schedule"]["generatedAt"]
+
+        load_mock_display_data(simulate_failure=True)
+        response = self.client.get("/api/screens/right")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["screen"]["screenKey"], "right")
+        self.assertEqual(
+            response.data["data"]["content"]["schedule"]["lineSchedules"][0]["orders"][0]["orderCode"],
+            "PLAN-001",
+        )
+        self.assertEqual(
+            response.data["data"]["content"]["schedule"]["riskSummary"]["items"],
+            [
+                {"key": "normal", "label": "正常", "accent": "green", "color": "#1f8b4c", "count": 1},
+                {"key": "warning", "label": "风险", "accent": "amber", "color": "#d28716", "count": 1},
+                {"key": "delayed", "label": "延期", "accent": "red", "color": "#c0362c", "count": 1},
+                {"key": "paused", "label": "暂停", "accent": "muted", "color": "#6b7280", "count": 0},
+            ],
+        )
+        self.assertEqual(
+            response.data["data"]["content"]["simulationPlaceholder"]["description"],
+            "当前阶段只保留预留区，优先级低于一期前段核心展示链路。",
+        )
+        self.assertTrue(response.data["data"]["meta"]["usingFallback"])
+        self.assertEqual(
+            parse_datetime(response.data["data"]["meta"]["lastSuccessfulAt"]),
+            parse_datetime(initial_generated_at),
+        )
+
+    def test_admin_can_view_data_source_health_snapshots(self):
+        load_mock_display_data()
+        response = self.client.get("/api/admin/data-source-healths")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["total"], 4)
+        self.assertEqual(response.data["data"]["items"][0]["status"], "healthy")
+
+    def test_admin_data_source_health_endpoint_bootstraps_mock_snapshots(self):
+        response = self.client.get("/api/admin/data-source-healths")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["total"], 4)
+
+    def test_screen_left_api_falls_back_when_display_content_text_is_question_marks(self):
+        DisplayContentConfig.objects.create(
+            config_key="default",
+            company_name="????",
+            welcome_message="????????",
+            logo_url="",
+            promo_image_urls=[],
+            is_active=True,
+        )
+
+        load_mock_display_data()
+        response = self.client.get("/api/screens/left")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["data"]["content"]["welcome"]["companyName"],
+            DEFAULT_DISPLAY_CONTENT["companyName"],
+        )
+        self.assertEqual(
+            response.data["data"]["content"]["welcome"]["welcomeMessage"],
+            DEFAULT_DISPLAY_CONTENT["welcomeMessage"],
+        )

@@ -56,7 +56,11 @@ function ResourceTable({ resourceDefinition, items, selectedId, onSelect }) {
                 onClick={() => onSelect(item)}
               >
                 {resourceDefinition.columns.map((column) => (
-                  <td key={column.key}>{formatCellValue(item[column.key])}</td>
+                  <td key={column.key}>
+                    {resourceDefinition.formatCell
+                      ? resourceDefinition.formatCell(column, item, formatCellValue)
+                      : formatCellValue(item[column.key])}
+                  </td>
                 ))}
               </tr>
             ))
@@ -337,8 +341,14 @@ function ResourceEditor({ activeResource, token, onUnauthorized }) {
         <section className="resource-section">
           {resourceDefinition.readOnly ? (
             <div className="readonly-detail">
-              <h3>日志详情</h3>
-              <pre>{selectedItem ? stringifyJson(selectedItem) : "点击左侧日志查看详情"}</pre>
+              <h3>{resourceDefinition.detailTitle ?? `${resourceDefinition.itemLabel}详情`}</h3>
+              <pre>
+                {selectedItem
+                  ? resourceDefinition.detailFormatter
+                    ? resourceDefinition.detailFormatter(selectedItem)
+                    : stringifyJson(selectedItem)
+                  : resourceDefinition.detailEmptyText ?? `点击左侧${resourceDefinition.itemLabel}查看详情`}
+              </pre>
             </div>
           ) : (
             <form className="editor-form" onSubmit={handleSubmit}>

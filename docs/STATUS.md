@@ -2,9 +2,9 @@
 
 ## 1. 当前阶段
 
-当前处于 M2 收尾阶段，本轮完成了 M2 的最小后台前端界面，现已具备从 M2 转入 M3 的条件。
+当前处于 M3 进行阶段，本轮完成了 M3 的第二个最小可交付目标：左右屏前端页面已接入标准展示 API，不再是占位页；前端在已有数据基础上遇到接口失败时也会继续保留当前画面，避免自行清空页面。
 
-当前已具备的 M2 最小后台能力：
+当前已具备的能力：
 
 - 管理员登录
 - 设备台账管理
@@ -16,15 +16,25 @@
 - 数据源配置管理
 - 基础操作日志
 - 最小后台前端界面
+- 设备状态快照缓存
+- 产量统计快照缓存
+- 排产甘特图快照缓存
+- 能耗快照缓存
+- 数据源健康状态快照
+- mock 数据装载命令
+- 左右屏展示 API
+- 数据源失败时返回最近一次成功快照
+- 左右屏前端展示页
+- 前端保留最近一次成功展示内容
 
 本阶段要求：
 
-- 仅推进 M2 范围内的后台基础能力，不提前进入 M3/M4/M5。
-- 已完成本轮最小后台管理 API，但尚未实现后台页面、缓存层、mock 展示 API 或大屏业务页面。
+- 本轮仍停留在 M3，只补左右屏前端展示，不提前进入 M4/M5。
+- 已完成标准缓存快照、mock 展示 API、异常兜底和左右屏真实展示页，但尚未进入真实数据源接入。
 - 不接真实外部系统。
 - 不实现报修、3D 仿真或内部 Web 报表。
 - 前端仍不得直连外部系统。
-- 数据源异常兜底、缓存层、mock 展示 API 与大屏业务页面留在后续里程碑。
+- 真实数据接入、后台健康页面前端化与大屏页面展示仍留在后续里程碑。
 
 ## 2. 已知信息
 
@@ -137,10 +147,10 @@ P3：
 
 ## 5. 下一步行动
 
-1. 下一轮建议进入 M3：标准数据模型、缓存层与 mock 展示 API。
-2. M3 仍不要接真实外部系统，先基于标准缓存模型和 mock 数据把展示数据链路跑通。
-3. 后台继续沿用本轮已完成的最小管理界面，不无必要重构。
-4. 数据源异常兜底与最近一次成功数据保留能力应在 M3/M6 路径内提前考虑。
+1. 下一轮继续留在 M3，补齐后台可读的数据源健康状态入口，必要时再接到现有最小后台控制台。
+2. 在不接真实外部系统的前提下，把左右屏页面从占位页升级为基于 `/api/screens/left` 与 `/api/screens/right` 的真实展示页。
+3. 保持现有 M2 后台界面与 M3 展示 API 稳定，不做无必要重构。
+4. 进入 M5 前不要让前端依赖任何外部系统原始结构，只依赖标准缓存接口。
 
 ## 6. 本轮更新记录
 
@@ -265,3 +275,166 @@ P3：
 
 - 进入 M3，先实现标准化缓存模型、mock 数据装载和左右屏展示 API。
 - 优先把“数据源异常时返回最近一次成功数据”的兜底机制落到后端缓存与展示接口，不接真实数据源。
+
+## 16. 本轮更新记录
+
+- 本轮正式进入 M3，但范围严格控制在后端最小闭环，不进入真实数据源接入、不进入报修、不进入 3D 仿真、不进入内部 Web 报表。
+- backend：新增标准化缓存快照模型：
+  - `DeviceStatusSnapshot`
+  - `ProductionSnapshot`
+  - `ScheduleSnapshot`
+  - `EnergySnapshot`
+  - `DataSourceHealthSnapshot`
+- backend：新增 `backoffice/display_services.py`，统一承担 mock 数据生成、缓存快照写入、默认配置兜底和左右屏展示数据拼装。
+- backend：新增公开展示接口：
+  - `/api/screens/left`
+  - `/api/screens/right`
+- backend：新增后台只读接口：
+  - `/api/admin/data-source-healths`
+- backend：新增管理命令 `python manage.py load_mock_screen_data`，用于装载 M3 mock 快照；支持 `--simulate-failure`，用于验证“保留最近一次成功数据”的兜底逻辑。
+- backend：展示接口会优先读取缓存快照；若 mock 快照尚未生成，会自动补装默认 mock 数据，避免接口空返回。
+- backend：当 mock 刷新失败时，只更新 `DataSourceHealthSnapshot` 为失败状态，不覆盖既有展示快照；左右屏接口继续返回上一次成功快照，并在 `meta.usingFallback` 中标记兜底状态。
+- backend：新增 `backoffice` 迁移文件 `0004_datasourcehealthsnapshot_devicestatussnapshot_and_more.py`。
+- 自动化验证结果：
+  - `python -m compileall backoffice hota_mds` 通过
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings` 15/15 通过
+  - `npm run build` 通过
+- 运行态冒烟验证结果：
+  - `python manage.py migrate --settings=hota_mds.test_settings` 通过
+  - `python manage.py load_mock_screen_data --settings=hota_mds.test_settings` 通过
+  - `GET /api/screens/left` 返回成功，`screenKey=left`
+  - `GET /api/screens/right` 返回成功，`screenKey=right`
+  - `python manage.py load_mock_screen_data --simulate-failure --settings=hota_mds.test_settings` 后，再次读取右屏接口，`meta.usingFallback=True`
+- 验证注意事项：
+  - 使用 SQLite 测试库做本地冒烟时，不要并行执行会写同一库的命令，否则可能出现 `database is locked`。
+
+## 17. 本轮更新记录
+
+- 本轮继续停留在 M3，不接真实外部系统，不做报修真实接入，不做 3D 仿真，不进入内部 Web 报表。
+- frontend：新增 `src/ScreenDisplay.jsx`，将左右屏从占位页升级为真实展示页。
+- frontend：`/screen/left` 现已接入 `/api/screens/left`，展示欢迎信息、设备概览、产量概览、近 8 小时产量趋势、区域能耗概览和报修占位区。
+- frontend：`/screen/right` 现已接入 `/api/screens/right`，展示未完工订单排产、延期风险概览和 3D 仿真预留区。
+- frontend：`src/App.jsx` 已改为按路由直接渲染左右屏展示组件，不再停留在大屏占位页。
+- frontend：当屏幕页已拿到成功数据后，如果后续接口请求失败，页面会继续保留当前内容，只更新状态提示，避免前端自身导致白屏。
+- frontend：`src/styles.css` 新增大屏布局与展示样式，适配桌面和窄屏宽度下的基础展示。
+- 自动化验证结果：
+  - `npm run build` 通过
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings` 15/15 通过
+- 运行态冒烟验证结果：
+  - `http://127.0.0.1:8000/api/screens/left` 返回 200
+  - `http://127.0.0.1:3000/screen/left` 返回 200
+  - `http://127.0.0.1:3000/screen/right` 返回 200
+
+## 18. 本轮更新记录
+
+- 修复了左右屏前端在 IAB/浏览器中打开时白屏的问题。
+- 根因不是后端接口无数据，而是前端当前未启用 React 专用 Vite 插件，JSX 仍按经典运行时编译为 `React.createElement(...)`。
+- 由于多个 `.jsx` 文件运行时未自动注入 `React`，页面加载后直接触发 `React is not defined`，导致 `#root` 没有任何内容渲染。
+- 修复方式：
+  - `frontend/vite.config.js` 新增 `esbuild.jsxInject = 'import React from "react"'`
+  - `frontend/src/main.jsx` 改为显式使用 `StrictMode`
+- 修复后验证结果：
+  - 通过无头浏览器复现并确认旧错误为 `React is not defined`
+  - 重启前端 dev/preview 服务后，再次验证 `http://127.0.0.1:3000/screen/left` 与 `http://127.0.0.1:4173/screen/left` 均已渲染正文内容，不再是空白页
+
+## 19. 本轮更新记录
+
+- 本轮继续停留在 M3，没有接真实外部系统，没有进入报修、3D 仿真或内部 Web 报表。
+- backend：`/api/admin/data-source-healths` 现在会在健康快照不存在时自动补装默认 mock 快照，避免后台首次进入时空列表。
+- backend：新增自动化测试，验证数据源健康接口在未预先装载 mock 数据时也能返回 4 条健康记录。
+- frontend：后台控制台新增“数据源健康”只读资源入口，读取 `/api/admin/data-source-healths`。
+- frontend：控制台可查看数据源名称、状态、是否兜底、最近成功时间、是否过期，并可点击查看完整记录详情。
+- frontend：重写 `AdminConsole.jsx`，清理历史乱码字符串，修正只读详情面板标题与提示文案。
+- 自动化验证结果：
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings` 16/16 通过
+  - `npm run build` 通过
+- 运行态冒烟验证结果：
+  - `GET /api/admin/data-source-healths` 在未手工装载 mock 数据时返回 200，`total=4`
+  - `http://127.0.0.1:3000/admin/console` 返回 200
+  - 使用无头浏览器登录后台后，“数据源健康”标签可见、可点击，列表加载成功，右侧详情面板显示“健康详情”
+
+## 20. 本轮更新记录
+
+- 本轮继续停留在 M3，只优化后台“数据源健康”页面的可读性，不涉及真实数据接入。
+- frontend：重写 `src/adminResources.js`，清理资源定义中的历史乱码，并保持现有后台资源行为不变。
+- frontend：为“数据源健康”资源新增只读展示格式化能力：
+  - `healthy/failed` 显示为“正常/失败”
+  - 布尔值显示为“是/否”
+  - ISO 时间显示为本地可读格式 `YYYY-MM-DD HH:mm:ss`
+  - 详情面板改为按字段分行展示，不再直接暴露原始 JSON 为唯一阅读方式
+- frontend：`src/AdminConsole.jsx` 已支持资源自定义表格单元格格式化和详情格式化。
+- 自动化验证结果：
+  - `npm run build` 通过
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings` 16/16 通过
+- 运行态冒烟验证结果：
+  - 无头浏览器登录后台并进入“数据源健康”后，列表中可见“正常”“否”和格式化后的时间字符串
+
+## 21. 本轮更新记录
+
+- 本轮继续停留在 M3，只修复一期双屏展示链路中的可见脏数据，不扩展到真实外部系统、报修接入、3D 仿真或内部 Web 报表。
+- frontend：重写 `src/AdminApp.jsx`、`src/App.jsx`、`src/PlaceholderScreen.jsx` 中仍残留的历史乱码文案，保持既有登录、路由和展示行为不变。
+- backend：在 `backoffice/display_services.py` 中为展示内容配置增加脏值兜底；当 `company_name` 或 `welcome_message` 为仅由 `?` 组成的历史坏值时，自动回退到默认展示文案。
+- backend：补充自动化测试，验证左屏接口在展示内容配置存在 `????` / `????????` 时，仍返回默认欢迎语与公司名。
+- 本地运行环境：已修正 `hota_mds.test_settings` 测试库中的坏欢迎语记录，使当前 `runserver` 页面无需手工重建快照即可恢复正常显示。
+- 自动化验证结果：
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings` 17/17 通过
+  - `npm run build` 通过
+- 运行态冒烟验证结果：
+  - `GET http://127.0.0.1:8000/api/screens/left` 返回 `welcomeMessage='欢迎莅临参观指导'`、`companyName='和泰智造'`
+  - 无头浏览器访问 `http://127.0.0.1:3000/admin/login`，登录页文案显示正常
+  - 无头浏览器访问 `http://127.0.0.1:3000/screen/left`，左屏欢迎语与公司名已恢复正常，不再显示 `?`
+
+## 22. 本轮更新记录
+
+- 本轮继续停留在 M3，只收敛一期双屏展示里仍暴露给参观者的原始状态枚举与占位说明，不扩展到真实外部系统、报修真实接入、3D 仿真或内部 Web 报表。
+- backend：`backoffice/display_services.py` 现在会为左屏设备状态输出标准化展示列表 `statusItems`，每项包含 `key`、`label`、`accent`、`count`，前端不再直接消费 `running/stopped/alarm/offline` 原始键。
+- backend：右屏排产风险汇总现在输出标准化展示列表 `riskSummary.items`，每项包含 `key`、`label`、`accent`、`color`、`count`，前端不再自己维护风险标签映射。
+- backend：为一期后段占位模块补充接口文案字段：
+  - `repairPlaceholder.description`
+  - `simulationPlaceholder.description`
+- frontend：重写 `src/ScreenDisplay.jsx`，改为直接渲染后端提供的标准化状态项与占位说明，保留原有双屏轮询刷新和“最近一次成功数据”前端兜底行为不变。
+- 自动化验证结果：
+  - `python manage.py test accounts backoffice --settings=hota_mds.test_settings` 17/17 通过
+  - `npm run build` 通过
+- 运行态冒烟验证结果：
+  - `GET http://127.0.0.1:8000/api/screens/left` 返回 `statusItems=[运行, 停机, 报警, 离线]`
+  - `GET http://127.0.0.1:8000/api/screens/right` 返回 `riskSummary.items=[正常, 风险, 延期, 暂停]`
+  - 无头浏览器访问 `http://127.0.0.1:3000/screen/left`，左屏已显示“运行/停机/报警/离线”，不再显示英文状态键
+  - 无头浏览器访问 `http://127.0.0.1:3000/screen/right`，右屏风险汇总显示“正常/风险/延期/暂停”，并正常显示 3D 预留说明
+
+## 23. 本轮状态总结
+
+### 当前阶段
+
+- 当前仍处于 M3 阶段。
+- 一期前段范围仍然只做外部参观双屏大屏，不进入内部 Web 报表。
+- 当前左右屏已经接入标准化缓存 API，并具备“最近一次成功数据”兜底能力。
+- 当前轮次已暂停在“展示字段继续标准化”这个方向上，尚未进入真实外部系统接入。
+
+### 本轮已完成
+
+- 后端为左屏设备状态增加标准化展示字段 `statusItems`，统一输出“运行 / 停机 / 报警 / 离线”。
+- 后端为右屏风险汇总增加标准化展示字段 `riskSummary.items`，统一输出“正常 / 风险 / 延期 / 暂停”。
+- 后端为报修占位和 3D 预留区补充说明文案字段：
+  - `repairPlaceholder.description`
+  - `simulationPlaceholder.description`
+- 前端重写 `frontend/src/ScreenDisplay.jsx`，改为直接渲染后端标准化字段，不再自行解释状态枚举。
+- 已完成后端测试、前端构建、接口校验和浏览器冒烟验证。
+
+### 未完成
+
+- 仍未接入任何真实外部系统。
+- 仍未实现一期之外的内部 Web 报表。
+- 仍未进入报修真实接入。
+- 仍未进入 3D 仿真真实开发。
+- 双屏其余动态字段的展示命名尚未完全收敛到后端标准化输出。
+
+### 当前已知问题
+
+- 文档中较早期历史段落仍存在编码乱码，但本轮新增记录为正常中文，不影响继续交接。
+- 当前验证主要基于 `hota_mds.test_settings` 和本地 mock 链路完成，还没有真实外部系统联调结果。
+- 工作区仍存在本轮之外的既有改动，例如 `README.md` 等，当前未处理，也未回退。
+
+### 下一个最优先任务
+
+- 继续留在 M3，优先把双屏剩余动态展示字段的命名和展示语义继续收敛到后端标准化输出，进一步减少前端对业务字段的解释和拼装。

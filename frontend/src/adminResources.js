@@ -1,5 +1,6 @@
 export const OMIT_VALUE = Symbol("omit-value");
 
+
 export const resourceDefinitions = {
   areas: {
     label: "区域台账",
@@ -254,6 +255,7 @@ export const resourceDefinitions = {
     label: "操作日志",
     endpoint: "/api/admin/operation-logs",
     itemLabel: "日志",
+    detailTitle: "日志详情",
     readOnly: true,
     columns: [
       { key: "createdAt", label: "时间" },
@@ -263,6 +265,50 @@ export const resourceDefinitions = {
       { key: "targetLabel", label: "对象" },
     ],
     fields: [],
+  },
+  dataSourceHealths: {
+    label: "数据源健康",
+    endpoint: "/api/admin/data-source-healths",
+    itemLabel: "健康记录",
+    detailTitle: "健康详情",
+    detailEmptyText: "点击左侧健康记录查看详情",
+    readOnly: true,
+    columns: [
+      { key: "displayName", label: "名称" },
+      { key: "status", label: "状态" },
+      { key: "fallbackInUse", label: "兜底中" },
+      { key: "lastSuccessAt", label: "最近成功" },
+      { key: "isStale", label: "过期" },
+    ],
+    fields: [],
+    formatCell(column, item, defaultFormatter) {
+      const value = item[column.key];
+      if (column.key === "status") {
+        return formatHealthStatus(value);
+      }
+      if (column.key === "lastSuccessAt" || column.key === "lastAttemptAt") {
+        return formatDateTime(value);
+      }
+      if (column.key === "fallbackInUse" || column.key === "isStale") {
+        return formatBoolean(value);
+      }
+      return defaultFormatter(value);
+    },
+    detailFormatter(item) {
+      return [
+        `名称：${item.displayName ?? "-"}`,
+        `来源键：${item.sourceKey ?? "-"}`,
+        `状态：${formatHealthStatus(item.status)}`,
+        `最近成功：${formatDateTime(item.lastSuccessAt)}`,
+        `最近尝试：${formatDateTime(item.lastAttemptAt)}`,
+        `是否过期：${formatBoolean(item.isStale)}`,
+        `是否使用兜底：${formatBoolean(item.fallbackInUse)}`,
+        `错误信息：${item.errorMessage || "-"}`,
+        "",
+        "附加信息：",
+        stringifyJson(item.details ?? {}),
+      ].join("\n");
+    },
   },
 };
 
@@ -341,7 +387,7 @@ export function formatCellValue(value) {
     return "-";
   }
   if (typeof value === "boolean") {
-    return value ? "是" : "否";
+    return formatBoolean(value);
   }
   if (typeof value === "object") {
     if (value.storageType) {
@@ -350,4 +396,38 @@ export function formatCellValue(value) {
     return stringifyJson(value);
   }
   return String(value);
+}
+
+
+function formatBoolean(value) {
+  return value ? "是" : "否";
+}
+
+
+function formatHealthStatus(value) {
+  if (value === "healthy") {
+    return "正常";
+  }
+  if (value === "failed") {
+    return "失败";
+  }
+  return String(value ?? "-");
+}
+
+
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }

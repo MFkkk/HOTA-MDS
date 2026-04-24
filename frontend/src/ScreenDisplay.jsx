@@ -41,6 +41,11 @@ const PAGE_PRESETS = {
     },
   },
 };
+const EMBEDDED_SECTION_HOSTS = {
+  energyOverview: "productionTrend",
+  repairPlaceholder: "deviceOverview",
+  delayLegend: "schedule",
+};
 
 function buildApiUrl(pathname) {
   const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -174,6 +179,30 @@ function isModuleEnabled(moduleSettings, moduleKey) {
   return moduleSettings?.[moduleKey] !== false;
 }
 
+function resolveVisibleSections(activeSections, moduleSettings) {
+  const resolved = [];
+  const seen = new Set();
+
+  activeSections.forEach((sectionKey) => {
+    if (!isModuleEnabled(moduleSettings, sectionKey)) {
+      return;
+    }
+
+    const hostKey = EMBEDDED_SECTION_HOSTS[sectionKey] ?? sectionKey;
+    if (hostKey !== sectionKey && !isModuleEnabled(moduleSettings, hostKey)) {
+      return;
+    }
+    if (seen.has(hostKey)) {
+      return;
+    }
+
+    seen.add(hostKey);
+    resolved.push(hostKey);
+  });
+
+  return resolved;
+}
+
 function useClock() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
@@ -266,12 +295,13 @@ function useAutoVerticalScroll(containerRef, enabled) {
         return;
       }
 
-      if (element.scrollTop >= maxScrollTop) {
+      const nextScrollTop = element.scrollTop + 1;
+      if (nextScrollTop >= maxScrollTop - 1) {
         element.scrollTop = 0;
         return;
       }
 
-      element.scrollTop += 1;
+      element.scrollTop = nextScrollTop;
     }, 40);
 
     return () => window.clearInterval(timerId);
@@ -391,10 +421,10 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
   const deviceOverview = content.deviceOverview ?? {};
   const productionOverview = content.productionOverview ?? {};
   const energyOverview = content.energyOverview ?? {};
+  const repairPlaceholder = content.repairPlaceholder ?? {};
   const productionTrend = content.productionTrend ?? [];
   const lineSummaries = productionOverview.lineSummaries ?? [];
   const areaSummaries = energyOverview.areaSummaries ?? [];
-  const statusItems = deviceOverview.statusItems ?? [];
   const productionDisplay = productionOverview.display ?? {};
   const energyDisplay = energyOverview.display ?? {};
   const deviceDisplay = deviceOverview.display ?? {};
@@ -402,11 +432,21 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
   const pages = useMemo(() => resolveConfiguredPages("left", screen.pageKeys), [screen.pageKeys]);
   const [activePageIndex, setActivePageIndex] = usePageRotation(pages, screen.rotationIntervalSeconds);
   const activeSections = pages[activePageIndex]?.sections ?? [];
-  const visibleSections = activeSections.filter((sectionKey) => isModuleEnabled(moduleSettings, sectionKey));
+  const visibleSections = useMemo(
+    () => resolveVisibleSections(activeSections, moduleSettings),
+    [activeSections, moduleSettings],
+  );
   const trendMax = Math.max(
     ...productionTrend.map((item) => Number(item?.producedQuantity ?? 0)),
     1,
   );
+  const lineSummaryScrollRef = useRef(null);
+  const energySummaryScrollRef = useRef(null);
+  const shouldAutoScrollLineSummaries = lineSummaries.length > 6;
+  const shouldAutoScrollEnergySummaries = areaSummaries.length > 4;
+
+  useAutoVerticalScroll(lineSummaryScrollRef, shouldAutoScrollLineSummaries);
+  useAutoVerticalScroll(energySummaryScrollRef, shouldAutoScrollEnergySummaries);
 
   const sectionNodes = {
     deviceOverview: (
@@ -420,25 +460,28 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
           <MetricTile accent="green" label="运行设备" value={deviceDisplay.runningCountLabel || formatNumber(deviceOverview.runningCount)} />
           <MetricTile accent="amber" label="异常设备" value={deviceDisplay.abnormalCountLabel || formatNumber(deviceOverview.abnormalCount)} />
         </div>
-        {statusItems.length > 0 ? (
-          <div className="status-breakdown">
-            {statusItems.map((item) => (
-              <div className="status-row" key={item.key}>
-                <span>{item.label}</span>
-                <strong>{item.countLabel || formatNumber(item.count)}</strong>
-              </div>
-            ))}
+        {isModuleEnabled(moduleSettings, "repairPlaceholder") ? (
+          <div className="embedded-panel-block">
+            <div className="embedded-panel-header">
+              <h3>报修占位区</h3>
+              <span>一期后段</span>
+            </div>
+            <div className="placeholder-copy embedded-placeholder-copy">
+              <strong>{repairPlaceholder.title || "报修模块待接入"}</strong>
+              <p>{repairPlaceholder.description || "当前阶段仅保留占位区，不阻塞一期前段大屏。"}</p>
+            </div>
           </div>
-        ) : (
-          <SectionEmpty description="设备状态快照暂未返回，页面会继续保留其他模块内容。" />
-        )}
+        ) : null}
       </section>
     ),
     productionOverview: (
-      <section className="screen-panel panel-span-4" key="productionOverview">
+      <section className="screen-panel panel-span-4 production-overview-panel" key="productionOverview">
         <div className="panel-header">
           <h2>产量执行概览</h2>
-          <span>完成率 {productionDisplay.overallCompletionRateLabel || `${productionOverview.overallCompletionRate ?? "-"}%`}</span>
+          <span>
+            {`产线 ${lineSummaries.length} 条`}
+            {shouldAutoScrollLineSummaries ? " · 自动滚动中" : ""}
+          </span>
         </div>
         <div className="metric-grid metric-grid-two">
           <MetricTile
@@ -452,21 +495,52 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
             value={productionDisplay.totalProducedQuantityLabel || formatNumber(productionOverview.totalProducedQuantity)}
           />
         </div>
+        <div className="production-overview-summary">
+          <span>完成率 {productionDisplay.overallCompletionRateLabel || `${productionOverview.overallCompletionRate ?? "-"}%`}</span>
+        </div>
         {lineSummaries.length > 0 ? (
-          <div className="line-summary-list">
+          <div
+            className={
+              shouldAutoScrollLineSummaries
+                ? "line-summary-list production-overview-list line-summary-list-scrollable"
+                : "line-summary-list production-overview-list"
+            }
+            ref={lineSummaryScrollRef}
+          >
             {lineSummaries.map((item) => {
               const itemDisplay = item.display ?? {};
+              const completionRateValue = clamp(Number(item?.completionRate ?? 0), 0, 100);
+              const progressAccent = itemDisplay.progressAccent || (item.isDelayed ? "red" : "blue");
               return (
                 <article className="line-summary-item" key={item.lineCode}>
-                  <div>
-                    <strong>{item.lineName}</strong>
+                  <div className="line-summary-main">
+                    <div className="line-summary-head">
+                      <strong>{item.lineName}</strong>
+                    </div>
                     <span>{itemDisplay.currentOrderLabel || item.currentOrderCode || "当前订单待补充"}</span>
                   </div>
-                  <div>
+                  <div className="line-summary-meta">
                     <span>{itemDisplay.targetQuantityLabel || `目标 ${formatNumber(item.targetQuantity)}`}</span>
                     <span>{itemDisplay.producedQuantityLabel || `已产 ${formatNumber(item.producedQuantity)}`}</span>
                   </div>
-                  <strong>{itemDisplay.completionRateLabel || `${item.completionRate ?? "-"}%`}</strong>
+                  <div className="line-summary-progress-row">
+                    <div
+                      aria-hidden="true"
+                      className={`line-summary-progress accent-${progressAccent}`}
+                    >
+                      <div
+                        className={`line-summary-progress-fill accent-${progressAccent}`}
+                        style={{ width: `${completionRateValue}%` }}
+                      />
+                    </div>
+                    <span className="line-summary-progress-value">
+                      {itemDisplay.completionRateLabel || `${item.completionRate ?? "-"}%`}
+                    </span>
+                  </div>
+                  <div className="line-summary-timeline">
+                    <span>{itemDisplay.plannedRangeLabel || `${item.plannedStartAt || "-"} - ${item.plannedEndAt || "-"}`}</span>
+                    <span>{`预计完成 ${itemDisplay.estimatedCompletionLabel || item.estimatedCompletionAt || "-"}`}</span>
+                  </div>
                 </article>
               );
             })}
@@ -477,7 +551,7 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
       </section>
     ),
     productionTrend: (
-      <section className="screen-panel panel-span-4" key="productionTrend">
+      <section className="screen-panel panel-span-4 production-trend-panel" key="productionTrend">
         <div className="panel-header">
           <h2>近 8 小时产量趋势</h2>
           <span>后端缓存数据</span>
@@ -505,44 +579,45 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
         ) : (
           <SectionEmpty description="产量趋势点暂未返回，当前不会影响其他模块展示。" />
         )}
-      </section>
-    ),
-    energyOverview: (
-      <section className="screen-panel panel-span-7" key="energyOverview">
-        <div className="panel-header">
-          <h2>区域能耗概览</h2>
-          <span>{energyDisplay.totalConsumptionLabel || `总能耗 ${formatNumber(energyOverview.totalConsumption)} ${energyOverview.unit ?? ""}`}</span>
-        </div>
-        {areaSummaries.length > 0 ? (
-          <div className="energy-list">
-            {areaSummaries.map((item) => {
-              const itemDisplay = item.display ?? {};
-              return (
-                <article className="energy-item" key={item.areaCode}>
-                  <div>
-                    <strong>{item.areaName}</strong>
-                    <span>{item.areaCode}</span>
-                  </div>
-                  <strong>{itemDisplay.consumptionLabel || `${formatNumber(item.consumption)} ${item.unit ?? ""}`}</strong>
-                </article>
-              );
-            })}
+        {isModuleEnabled(moduleSettings, "energyOverview") ? (
+          <div className="embedded-panel-block embedded-panel-block-fill">
+            <div className="embedded-panel-header">
+              <h3>区域能耗概览</h3>
+              <span>{energyDisplay.totalConsumptionLabel || `总能耗 ${formatNumber(energyOverview.totalConsumption)} ${energyOverview.unit ?? ""}`}</span>
+            </div>
+            <div className="embedded-panel-summary">
+              <span>
+                {`区域 ${areaSummaries.length} 个`}
+                {shouldAutoScrollEnergySummaries ? " · 自动滚动中" : ""}
+              </span>
+            </div>
+            {areaSummaries.length > 0 ? (
+              <div
+                className={
+                  shouldAutoScrollEnergySummaries
+                    ? "energy-list energy-list-embedded energy-list-scrollable"
+                    : "energy-list energy-list-embedded"
+                }
+                ref={energySummaryScrollRef}
+              >
+                {areaSummaries.map((item) => {
+                  const itemDisplay = item.display ?? {};
+                  return (
+                    <article className="energy-item energy-item-embedded" key={item.areaCode}>
+                      <div>
+                        <strong>{item.areaName}</strong>
+                        <span>{item.areaCode}</span>
+                      </div>
+                      <strong>{itemDisplay.consumptionLabel || `${formatNumber(item.consumption)} ${item.unit ?? ""}`}</strong>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <SectionEmpty description="当前没有可展示的区域能耗数据。" />
+            )}
           </div>
-        ) : (
-          <SectionEmpty description="当前没有可展示的区域能耗数据。" />
-        )}
-      </section>
-    ),
-    repairPlaceholder: (
-      <section className="screen-panel panel-span-5 placeholder-panel" key="repairPlaceholder">
-        <div className="panel-header">
-          <h2>报修占位区</h2>
-          <span>一期后段</span>
-        </div>
-        <div className="placeholder-copy">
-          <strong>{content.repairPlaceholder?.title || "报修模块待接入"}</strong>
-          <p>{content.repairPlaceholder?.description || "当前阶段仅保留占位，不阻塞一期前段大屏。"}</p>
-        </div>
+        ) : null}
       </section>
     ),
   };
@@ -728,58 +803,38 @@ function RightScreen({ payload, errorMessage, fullscreenState, screenRef }) {
   const schedule = content.schedule ?? {};
   const riskItems = schedule?.riskSummary?.items ?? [];
   const scheduleRows = schedule.lineSchedules ?? [];
-  const legends = content.delayLegend ?? [];
   const scheduleDisplay = schedule.display ?? {};
   const moduleSettings = screen.moduleSettings ?? {};
   const pages = useMemo(() => resolveConfiguredPages("right", screen.pageKeys), [screen.pageKeys]);
   const [activePageIndex, setActivePageIndex] = usePageRotation(pages, screen.rotationIntervalSeconds);
   const activeSections = pages[activePageIndex]?.sections ?? [];
-  const visibleSections = activeSections.filter((sectionKey) => isModuleEnabled(moduleSettings, sectionKey));
+  const visibleSections = useMemo(
+    () => resolveVisibleSections(activeSections, moduleSettings),
+    [activeSections, moduleSettings],
+  );
 
   const sectionNodes = {
     schedule: (
-      <section className="screen-panel panel-span-8" key="schedule">
+      <section className="screen-panel panel-span-8 schedule-panel" key="schedule">
         <div className="panel-header">
           <h2>未完工订单排产展示</h2>
           <span>未来窗口 {scheduleDisplay.windowDaysLabel || `${formatNumber(schedule.windowDays)} 天`}</span>
         </div>
-        <GanttBoard lineSchedules={scheduleRows} schedule={schedule} />
-      </section>
-    ),
-    delayLegend: (
-      <section className="screen-panel panel-span-4" key="delayLegend">
-        <div className="panel-header">
-          <h2>延期风险说明</h2>
-          <span>后端标准判定</span>
-        </div>
         {riskItems.length > 0 ? (
-          <div className="metric-grid metric-grid-two">
+          <div className="risk-summary-row">
             {riskItems.map((item) => (
-              <MetricTile
-                key={item.key}
-                accent={item.accent}
-                label={item.label}
-                value={item.countLabel || formatNumber(item.count)}
-              />
-            ))}
-          </div>
-        ) : (
-          <SectionEmpty description="延期风险汇总暂未返回，当前不会影响排产主视图。" />
-        )}
-        {legends.length > 0 ? (
-          <div className="legend-list">
-            {legends.map((item) => (
-              <div className="legend-item" key={item.key}>
-                <span className="legend-color" style={{ backgroundColor: item.color }} />
+              <article className={`risk-summary-tile accent-${item.accent}`} key={item.key}>
                 <span>{item.label}</span>
-              </div>
+                <strong>{item.countLabel || formatNumber(item.count)}</strong>
+              </article>
             ))}
           </div>
         ) : null}
+        <GanttBoard lineSchedules={scheduleRows} schedule={schedule} />
       </section>
     ),
     simulationPlaceholder: (
-      <section className="screen-panel panel-span-12 placeholder-panel" key="simulationPlaceholder">
+      <section className="screen-panel panel-span-4 placeholder-panel simulation-panel" key="simulationPlaceholder">
         <div className="panel-header">
           <h2>3D 仿真占位区</h2>
           <span>一期后段</span>

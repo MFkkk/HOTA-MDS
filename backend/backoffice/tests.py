@@ -299,11 +299,12 @@ class BackofficeApiTests(TestCase):
         self.assertEqual(
             response.data["data"]["content"]["productionOverview"]["display"],
             {
-                "overallCompletionRateLabel": "85.58%",
-                "totalTargetQuantityLabel": "3120",
-                "totalProducedQuantityLabel": "2670",
+                "overallCompletionRateLabel": "86.01%",
+                "totalTargetQuantityLabel": "10720",
+                "totalProducedQuantityLabel": "9220",
             },
         )
+        self.assertEqual(len(response.data["data"]["content"]["productionOverview"]["lineSummaries"]), 8)
         self.assertEqual(
             response.data["data"]["content"]["productionOverview"]["lineSummaries"][0]["display"],
             {
@@ -311,14 +312,24 @@ class BackofficeApiTests(TestCase):
                 "targetQuantityLabel": "目标 920",
                 "producedQuantityLabel": "已产 785",
                 "completionRateLabel": "85.33%",
+                "plannedRangeLabel": f"{parse_datetime(response.data['data']['content']['productionOverview']['lineSummaries'][0]['plannedStartAt']).astimezone().strftime('%Y-%m-%d %H:%M:%S')} - {parse_datetime(response.data['data']['content']['productionOverview']['lineSummaries'][0]['plannedEndAt']).astimezone().strftime('%Y-%m-%d %H:%M:%S')}",
+                "estimatedCompletionLabel": parse_datetime(response.data["data"]["content"]["productionOverview"]["lineSummaries"][0]["estimatedCompletionAt"]).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                "progressAccent": "blue",
             },
+        )
+        self.assertTrue(
+            any(
+                item["display"]["progressAccent"] == "red" and item["isDelayed"] is True
+                for item in response.data["data"]["content"]["productionOverview"]["lineSummaries"]
+            )
         )
         self.assertEqual(
             response.data["data"]["content"]["energyOverview"]["display"],
             {
-                "totalConsumptionLabel": "1830.00 kWh",
+                "totalConsumptionLabel": "6180.00 kWh",
             },
         )
+        self.assertEqual(len(response.data["data"]["content"]["energyOverview"]["areaSummaries"]), 8)
         self.assertEqual(
             response.data["data"]["content"]["energyOverview"]["areaSummaries"][0]["display"],
             {

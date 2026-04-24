@@ -348,30 +348,54 @@ def _build_production_snapshot(current_time, source_updated_at, runtime_paramete
             _FallbackLine("L03", "包装线", "包装区"),
         ]
 
+    minimum_lines = max(len(lines), 8)
+
     line_summaries = []
     total_target = 0
     total_produced = 0
-    for index, line in enumerate(lines, start=1):
-        target_quantity = 800 + index * 120
-        produced_quantity = target_quantity - (120 + index * 15)
+    for index in range(minimum_lines):
+        source_line = lines[index % len(lines)]
+        line_number = index + 1
+        line_code = source_line.code if index < len(lines) else f"MOCK-L{line_number:02d}"
+        line_name = source_line.name if index < len(lines) else f"{getattr(source_line, 'area_name', getattr(getattr(source_line, 'area', None), 'name', '演示区域'))}{line_number:02d}线"
+        area_name = getattr(getattr(source_line, "area", None), "name", None) or getattr(source_line, "area_name", "")
+        target_quantity = 800 + line_number * 120
+        produced_quantity = target_quantity - (120 + line_number * 15)
         completion_rate = _percentage(produced_quantity, target_quantity)
-        current_order_code = f"MO-{index:03d}"
+        current_order_code = f"MO-{line_number:03d}"
+        planned_start_at = timezone.localtime(current_time - timedelta(hours=2) + timedelta(hours=index))
+        planned_end_at = planned_start_at + timedelta(hours=10 + (index % 4) * 3)
+        remaining_quantity = max(target_quantity - produced_quantity, 0)
+        standard_capacity_per_hour = Decimal(str(runtime_parameters["defaultStandardCapacityPerHour"]))
+        estimated_hours = Decimal(str(remaining_quantity)) / standard_capacity_per_hour
+        if line_number % 4 == 0:
+            estimated_hours += Decimal("20")
+        estimated_completion_at = planned_start_at + timedelta(hours=float(estimated_hours))
+        is_delayed = estimated_completion_at > planned_end_at
         total_target += target_quantity
         total_produced += produced_quantity
         line_summaries.append(
             {
-                "lineCode": line.code,
-                "lineName": line.name,
-                "areaName": getattr(getattr(line, "area", None), "name", None) or getattr(line, "area_name", ""),
+                "lineCode": line_code,
+                "lineName": line_name,
+                "areaName": area_name,
                 "currentOrderCode": current_order_code,
                 "targetQuantity": target_quantity,
                 "producedQuantity": produced_quantity,
                 "completionRate": completion_rate,
+                "plannedStartAt": planned_start_at.isoformat(),
+                "plannedEndAt": planned_end_at.isoformat(),
+                "estimatedCompletionAt": estimated_completion_at.isoformat(),
+                "isDelayed": is_delayed,
                 "display": _build_production_line_display(
                     current_order_code,
                     target_quantity,
                     produced_quantity,
                     completion_rate,
+                    planned_start_at,
+                    planned_end_at,
+                    estimated_completion_at,
+                    is_delayed,
                 ),
             }
         )
@@ -496,15 +520,20 @@ def _build_energy_snapshot(current_time, source_updated_at) -> dict:
             _FallbackArea("A03", "仓储区"),
         ]
 
+    minimum_areas = max(len(areas), 8)
     total_consumption = Decimal("0.00")
     area_summaries = []
-    for index, area in enumerate(areas, start=1):
-        consumption = Decimal(str(480 + index * 65)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    for index in range(minimum_areas):
+        source_area = areas[index % len(areas)]
+        area_number = index + 1
+        area_code = source_area.code if index < len(areas) else f"MOCK-A{area_number:02d}"
+        area_name = source_area.name if index < len(areas) else f"{source_area.name}{area_number:02d}区"
+        consumption = Decimal(str(480 + area_number * 65)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total_consumption += consumption
         area_summaries.append(
             {
-                "areaCode": area.code,
-                "areaName": area.name,
+                "areaCode": area_code,
+                "areaName": area_name,
                 "consumption": str(consumption),
                 "unit": "kWh",
                 "display": _build_energy_area_display(str(consumption), "kWh"),
@@ -705,12 +734,24 @@ def _build_schedule_order_display(risk_status: str, display_start_at: str, displ
     }
 
 
-def _build_production_line_display(current_order_code: str, target_quantity: int, produced_quantity: int, completion_rate) -> dict:
+def _build_production_line_display(
+    current_order_code: str,
+    target_quantity: int,
+    produced_quantity: int,
+    completion_rate,
+    planned_start_at,
+    planned_end_at,
+    estimated_completion_at,
+    is_delayed: bool,
+) -> dict:
     return {
         "currentOrderLabel": f"当前订单 {current_order_code}",
         "targetQuantityLabel": f"目标 {target_quantity}",
         "producedQuantityLabel": f"已产 {produced_quantity}",
         "completionRateLabel": f"{completion_rate}%",
+        "plannedRangeLabel": f"{_format_display_datetime(planned_start_at)} - {_format_display_datetime(planned_end_at)}",
+        "estimatedCompletionLabel": _format_display_datetime(estimated_completion_at),
+        "progressAccent": "red" if is_delayed else "blue",
     }
 
 

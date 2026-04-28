@@ -308,9 +308,20 @@ class BackofficeApiTests(TestCase):
         self.assertTrue(OperationLog.objects.filter(action="CREATE", target_type="area").exists())
 
     def test_screen_left_api_returns_mock_snapshot_payload(self):
+        area = Area.objects.create(code="A-SCREEN-L", name="总装区", is_active=True)
+        line = ProductionLine.objects.create(code="L-SCREEN-L", name="左屏线", area=area, is_active=True)
+        Device.objects.create(
+            code="D-SCREEN-L",
+            name="左屏设备",
+            ip="10.0.0.1",
+            area=area,
+            production_line=line,
+            default_status=Device.STATUS_RUNNING,
+            is_active=True,
+        )
         load_mock_display_data()
 
-        response = self.client.get("/api/screens/left")
+        response = self.client.get("/api/screens/A-SCREEN-L/left")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["screen"]["screenKey"], "left")
@@ -322,9 +333,9 @@ class BackofficeApiTests(TestCase):
             device_overview["display"],
             {
                 "sourceUpdatedAtLabel": parse_datetime(device_overview["sourceUpdatedAt"]).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-                "totalCountLabel": "6",
-                "runningCountLabel": "4",
-                "abnormalCountLabel": "2",
+                "totalCountLabel": "1",
+                "runningCountLabel": "1",
+                "abnormalCountLabel": "0",
             },
         )
         self.assertEqual(
@@ -357,10 +368,10 @@ class BackofficeApiTests(TestCase):
         self.assertEqual(
             response.data["data"]["content"]["energyOverview"]["display"],
             {
-                "totalConsumptionLabel": "6180.00 kWh",
+                "totalConsumptionLabel": "545.00 kWh",
             },
         )
-        self.assertEqual(len(response.data["data"]["content"]["energyOverview"]["areaSummaries"]), 8)
+        self.assertEqual(len(response.data["data"]["content"]["energyOverview"]["areaSummaries"]), 1)
         self.assertEqual(
             response.data["data"]["content"]["energyOverview"]["areaSummaries"][0]["display"],
             {
@@ -377,9 +388,9 @@ class BackofficeApiTests(TestCase):
         self.assertEqual(
             response.data["data"]["content"]["deviceOverview"]["statusItems"],
             [
-                {"key": "running", "label": "运行", "accent": "green", "count": 4, "countLabel": "4"},
-                {"key": "stopped", "label": "停机", "accent": "amber", "count": 1, "countLabel": "1"},
-                {"key": "alarm", "label": "报警", "accent": "red", "count": 1, "countLabel": "1"},
+                {"key": "running", "label": "运行", "accent": "green", "count": 1, "countLabel": "1"},
+                {"key": "stopped", "label": "停机", "accent": "amber", "count": 0, "countLabel": "0"},
+                {"key": "alarm", "label": "报警", "accent": "red", "count": 0, "countLabel": "0"},
                 {"key": "offline", "label": "离线", "accent": "muted", "count": 0, "countLabel": "0"},
             ],
         )
@@ -397,11 +408,13 @@ class BackofficeApiTests(TestCase):
         self.assertFalse(response.data["data"]["meta"]["usingFallback"])
 
     def test_screen_right_api_keeps_last_successful_data_when_failure_occurs(self):
+        area = Area.objects.create(code="A-SCREEN-R", name="总装区", is_active=True)
+        ProductionLine.objects.create(code="L-SCREEN-R", name="右屏线", area=area, is_active=True)
         initial_result = load_mock_display_data()
         initial_generated_at = initial_result["snapshots"]["schedule"]["generatedAt"]
 
         load_mock_display_data(simulate_failure=True)
-        response = self.client.get("/api/screens/right")
+        response = self.client.get("/api/screens/A-SCREEN-R/right")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["screen"]["screenKey"], "right")
@@ -470,6 +483,8 @@ class BackofficeApiTests(TestCase):
         self.assertEqual(response.data["data"]["total"], 4)
 
     def test_screen_left_api_falls_back_when_display_content_text_is_question_marks(self):
+        area = Area.objects.create(code="A-SCREEN-Q", name="总装区", is_active=True)
+        ProductionLine.objects.create(code="L-SCREEN-Q", name="问号线", area=area, is_active=True)
         DisplayContentConfig.objects.create(
             config_key="default",
             company_name="????",
@@ -480,7 +495,7 @@ class BackofficeApiTests(TestCase):
         )
 
         load_mock_display_data()
-        response = self.client.get("/api/screens/left")
+        response = self.client.get("/api/screens/A-SCREEN-Q/left")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(

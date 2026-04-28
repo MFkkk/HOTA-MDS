@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from .models import (
     Area,
+    DataSourceConfig,
     DataSourceHealthSnapshot,
     Device,
     DeviceStatusSnapshot,
@@ -20,6 +21,7 @@ from .models import (
     ScheduleSnapshot,
     ScreenConfig,
 )
+from .connection_test_services import test_database_connection, test_opcua_connection
 from .serializers import (
     DataSourceHealthSnapshotSerializer,
     DeviceStatusSnapshotSerializer,
@@ -107,15 +109,17 @@ RISK_STATUS_DISPLAY = {
 }
 
 
-def get_screen_payload(screen_key: str) -> dict:
+def get_screen_payload(screen_key: str, area_code: str | None = None) -> dict:
     ensure_mock_snapshots()
+    _refresh_device_runtime_statuses_if_needed()
+    area = _resolve_area(area_code)
 
     device_snapshot = DeviceStatusSnapshot.objects.get(snapshot_key=SNAPSHOT_KEY_DEFAULT)
     production_snapshot = ProductionSnapshot.objects.get(snapshot_key=SNAPSHOT_KEY_DEFAULT)
     schedule_snapshot = ScheduleSnapshot.objects.get(snapshot_key=SNAPSHOT_KEY_DEFAULT)
     energy_snapshot = EnergySnapshot.objects.get(snapshot_key=SNAPSHOT_KEY_DEFAULT)
 
-    screen_config = _get_screen_config(screen_key)
+    screen_config = _get_screen_config(screen_key, area)
     display_content = _get_display_content()
     runtime_parameters = _get_runtime_parameters()
     health_statuses = _get_health_statuses()
@@ -141,6 +145,8 @@ def get_screen_payload(screen_key: str) -> dict:
             },
         },
         "meta": {
+            "areaCode": area.code,
+            "areaName": area.name,
             "lastSuccessfulAt": last_success_at,
             "usingFallback": any(item["fallbackInUse"] for item in relevant_statuses),
             "dataSources": relevant_statuses,
@@ -149,34 +155,52 @@ def get_screen_payload(screen_key: str) -> dict:
     }
 
     if screen_key == "left":
-        device_overview = DeviceStatusSnapshotSerializer(device_snapshot).data
-        device_overview["statusItems"] = _build_device_status_items(device_snapshot.status_breakdown)
+        area_device_overview = _build_area_device_overview(area)
+        filtered_line_summaries = _filter_line_summaries_by_area(production_snapshot.line_summaries, area)
+        total_target_quantity = sum(int(item.get("targetQuantity") or 0) for item in filtered_line_summaries)
+        total_produced_quantity = sum(int(item.get("producedQuantity") or 0) for item in filtered_line_summaries)
+        area_completion_rate = _percentage(total_produced_quantity, total_target_quantity)
+        filtered_area_summaries = _filter_area_energy_summaries_by_area(energy_snapshot.area_summaries, area)
+
+        device_overview = {
+            "totalCount": area_device_overview["total_count"],
+            "runningCount": area_device_overview["running_count"],
+            "abnormalCount": area_device_overview["abnormal_count"],
+            "statusBreakdown": area_device_overview["status_breakdown"],
+            "generatedAt": timezone.localtime().isoformat(),
+            "sourceUpdatedAt": device_snapshot.source_updated_at.isoformat() if device_snapshot.source_updated_at else None,
+            "lastSuccessAt": device_snapshot.last_success_at.isoformat() if device_snapshot.last_success_at else None,
+        }
+        device_overview["statusItems"] = _build_device_status_items(area_device_overview["status_breakdown"])
         device_overview["display"] = _build_device_overview_display(
-            device_snapshot.total_count,
-            device_snapshot.running_count,
-            device_snapshot.abnormal_count,
+            area_device_overview["total_count"],
+            area_device_overview["running_count"],
+            area_device_overview["abnormal_count"],
             device_snapshot.source_updated_at,
         )
         payload["content"].update(
             {
                 "deviceOverview": device_overview,
                 "productionOverview": {
-                    "totalTargetQuantity": production_snapshot.total_target_quantity,
-                    "totalProducedQuantity": production_snapshot.total_produced_quantity,
-                    "overallCompletionRate": str(production_snapshot.overall_completion_rate),
-                    "lineSummaries": production_snapshot.line_summaries,
+                    "totalTargetQuantity": total_target_quantity,
+                    "totalProducedQuantity": total_produced_quantity,
+                    "overallCompletionRate": str(area_completion_rate),
+                    "lineSummaries": filtered_line_summaries,
                     "display": _build_production_overview_display(
-                        production_snapshot.total_target_quantity,
-                        production_snapshot.total_produced_quantity,
-                        production_snapshot.overall_completion_rate,
+                        total_target_quantity,
+                        total_produced_quantity,
+                        area_completion_rate,
                     ),
                 },
                 "productionTrend": production_snapshot.trend_points,
                 "energyOverview": {
-                    "totalConsumption": str(energy_snapshot.total_consumption),
+                    "totalConsumption": _sum_energy_consumption(filtered_area_summaries),
                     "unit": energy_snapshot.unit,
-                    "areaSummaries": energy_snapshot.area_summaries,
-                    "display": _build_energy_overview_display(energy_snapshot.total_consumption, energy_snapshot.unit),
+                    "areaSummaries": filtered_area_summaries,
+                    "display": _build_energy_overview_display(
+                        _sum_energy_consumption(filtered_area_summaries),
+                        energy_snapshot.unit,
+                    ),
                 },
                 "repairPlaceholder": {
                     "title": "报修模块待一期后段接入",
@@ -186,14 +210,15 @@ def get_screen_payload(screen_key: str) -> dict:
             }
         )
     else:
-        risk_counts = dict(schedule_snapshot.risk_summary.get("counts", {}))
+        filtered_line_schedules = _filter_line_schedules_by_area(schedule_snapshot.line_schedules, area)
+        risk_counts = _build_risk_counts(filtered_line_schedules)
         payload["content"].update(
             {
                 "schedule": {
                     "windowDays": runtime_parameters["ganttWindowDays"],
                     "autoScrollEnabled": runtime_parameters["autoScrollEnabled"],
                     "autoScrollRowsThreshold": runtime_parameters["autoScrollRowsThreshold"],
-                    "lineSchedules": schedule_snapshot.line_schedules,
+                    "lineSchedules": filtered_line_schedules,
                     "display": _build_schedule_display(runtime_parameters["ganttWindowDays"]),
                     "riskSummary": {
                         **schedule_snapshot.risk_summary,
@@ -553,11 +578,28 @@ def _build_energy_snapshot(current_time, source_updated_at) -> dict:
     }
 
 
-def _get_screen_config(screen_key: str) -> dict:
-    config = ScreenConfig.objects.filter(screen_key=screen_key, is_active=True).first()
+def _resolve_area(area_code: str | None):
+    if not area_code:
+        raise ValueError("area_code is required")
+    area = Area.objects.filter(code=area_code, is_active=True).first()
+    if not area:
+        raise ValueError(f"area '{area_code}' not found or inactive")
+    return area
+
+
+def _get_screen_config(screen_key: str, area) -> dict:
+    config = (
+        ScreenConfig.objects.filter(area=area, screen_key=screen_key, is_active=True)
+        .select_related("area")
+        .first()
+    )
+    if not config:
+        config = ScreenConfig.objects.filter(area__isnull=True, screen_key=screen_key, is_active=True).first()
     if not config:
         return DEFAULT_SCREEN_CONFIGS[screen_key]
     return {
+        "areaCode": area.code,
+        "areaName": area.name,
         "screenKey": config.screen_key,
         "title": config.title,
         "subtitle": config.subtitle,
@@ -623,6 +665,150 @@ def _get_runtime_parameters() -> dict:
 def _get_health_statuses() -> list[dict]:
     statuses = DataSourceHealthSnapshot.objects.order_by("source_key")
     return DataSourceHealthSnapshotSerializer(statuses, many=True).data
+
+
+def _build_area_device_overview(area) -> dict:
+    devices = list(Device.objects.filter(is_active=True, area=area))
+    status_breakdown = {
+        Device.STATUS_RUNNING: 0,
+        Device.STATUS_STOPPED: 0,
+        Device.STATUS_ALARM: 0,
+        Device.STATUS_OFFLINE: 0,
+    }
+    for device in devices:
+        status_breakdown[device.default_status] = status_breakdown.get(device.default_status, 0) + 1
+    total_count = len(devices)
+    running_count = status_breakdown.get(Device.STATUS_RUNNING, 0)
+    abnormal_count = max(total_count - running_count, 0)
+    return {
+        "total_count": total_count,
+        "running_count": running_count,
+        "abnormal_count": abnormal_count,
+        "status_breakdown": status_breakdown,
+    }
+
+
+def _refresh_device_runtime_statuses_if_needed() -> None:
+    now = timezone.now()
+    snapshot = DeviceStatusSnapshot.objects.filter(snapshot_key=SNAPSHOT_KEY_DEFAULT).first()
+    if snapshot and snapshot.source_updated_at and (now - snapshot.source_updated_at).total_seconds() < 30:
+        return
+
+    active_devices = list(Device.objects.filter(is_active=True).order_by("id"))
+    if not active_devices:
+        DeviceStatusSnapshot.objects.update_or_create(
+            snapshot_key=SNAPSHOT_KEY_DEFAULT,
+            defaults={
+                "total_count": 0,
+                "running_count": 0,
+                "abnormal_count": 0,
+                "status_breakdown": {
+                    Device.STATUS_RUNNING: 0,
+                    Device.STATUS_STOPPED: 0,
+                    Device.STATUS_ALARM: 0,
+                    Device.STATUS_OFFLINE: 0,
+                },
+                "generated_at": now,
+                "source_updated_at": now,
+                "last_success_at": now,
+            },
+        )
+        return
+
+    device_ids = [device.id for device in active_devices]
+    enabled_sources = (
+        DataSourceConfig.objects.filter(is_enabled=True, devices__id__in=device_ids)
+        .prefetch_related("devices")
+        .distinct()
+    )
+    source_result_cache = {}
+    device_has_running_source = {device_id: False for device_id in device_ids}
+
+    for source in enabled_sources:
+        source_ok = source_result_cache.get(source.id)
+        if source_ok is None:
+            source_ok = _test_data_source_connectivity(source)
+            source_result_cache[source.id] = source_ok
+        if not source_ok:
+            continue
+        for bound_device in source.devices.all():
+            if bound_device.id in device_has_running_source:
+                device_has_running_source[bound_device.id] = True
+
+    changed_devices = []
+    for device in active_devices:
+        target_status = Device.STATUS_RUNNING if device_has_running_source.get(device.id, False) else Device.STATUS_STOPPED
+        if device.default_status != target_status:
+            device.default_status = target_status
+            changed_devices.append(device)
+    if changed_devices:
+        Device.objects.bulk_update(changed_devices, ["default_status"])
+
+    running_count = sum(1 for device in active_devices if device_has_running_source.get(device.id, False))
+    total_count = len(active_devices)
+    abnormal_count = total_count - running_count
+    DeviceStatusSnapshot.objects.update_or_create(
+        snapshot_key=SNAPSHOT_KEY_DEFAULT,
+        defaults={
+            "total_count": total_count,
+            "running_count": running_count,
+            "abnormal_count": abnormal_count,
+            "status_breakdown": {
+                Device.STATUS_RUNNING: running_count,
+                Device.STATUS_STOPPED: abnormal_count,
+                Device.STATUS_ALARM: 0,
+                Device.STATUS_OFFLINE: 0,
+            },
+            "generated_at": now,
+            "source_updated_at": now,
+            "last_success_at": now,
+        },
+    )
+
+
+def _test_data_source_connectivity(source: DataSourceConfig) -> bool:
+    source_type = (source.source_type or "").strip()
+    connection_config = source.connection_config or {}
+    if source_type == "opcua":
+        return test_opcua_connection(connection_config).ok
+    if source_type in {"database", "schedule_db", "energy_db", "wms"}:
+        return test_database_connection(connection_config).ok
+    # Other source types keep compatibility with existing "mock pass" policy.
+    return True
+
+
+def _filter_line_summaries_by_area(line_summaries: list[dict], area) -> list[dict]:
+    filtered = [item for item in line_summaries if (item.get("areaName") or "") == area.name]
+    return filtered
+
+
+def _filter_line_schedules_by_area(line_schedules: list[dict], area) -> list[dict]:
+    filtered = [item for item in line_schedules if (item.get("areaName") or "") == area.name]
+    return filtered
+
+
+def _build_risk_counts(line_schedules: list[dict]) -> dict:
+    risk_counts = {"normal": 0, "warning": 0, "delayed": 0, "paused": 0}
+    for line in line_schedules:
+        for order in line.get("orders", []):
+            risk_status = order.get("riskStatus")
+            if risk_status in risk_counts:
+                risk_counts[risk_status] += 1
+    return risk_counts
+
+
+def _filter_area_energy_summaries_by_area(area_summaries: list[dict], area) -> list[dict]:
+    return [item for item in area_summaries if (item.get("areaCode") or "") == area.code]
+
+
+def _sum_energy_consumption(area_summaries: list[dict]) -> str:
+    total = Decimal("0")
+    for item in area_summaries:
+        try:
+            total += Decimal(str(item.get("consumption") or "0"))
+        except Exception:
+            continue
+    return str(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def _percentage(numerator: int, denominator: int) -> float:

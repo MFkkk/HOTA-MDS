@@ -316,14 +316,14 @@ class CodeMappingViewSet(AdminApiViewSet):
 
 
 class ScreenConfigViewSet(AdminApiViewSet):
-    queryset = ScreenConfig.objects.all()
+    queryset = ScreenConfig.objects.select_related("area").all()
     serializer_class = ScreenConfigSerializer
     target_type = "screen_config"
-    search_fields = ["screen_key", "title", "subtitle"]
+    search_fields = ["screen_key", "title", "subtitle", "area__code", "area__name"]
     boolean_filter_fields = ["is_active"]
-    exact_filter_fields = ["screen_key"]
-    ordering_fields = ["id", "screen_key", "title", "is_active", "created_at", "updated_at"]
-    default_ordering = ["screen_key"]
+    exact_filter_fields = ["screen_key", "area_id"]
+    ordering_fields = ["id", "screen_key", "title", "is_active", "area__code", "created_at", "updated_at"]
+    default_ordering = ["area__code", "screen_key"]
 
 
 class DisplayContentConfigViewSet(AdminApiViewSet):
@@ -544,8 +544,11 @@ class ScreenDisplayView(APIView):
     permission_classes = [AllowAny]
     screen_key = ""
 
-    def get(self, request, *args, **kwargs):
-        payload = get_screen_payload(self.screen_key)
+    def get(self, request, area_code, *args, **kwargs):
+        try:
+            payload = get_screen_payload(self.screen_key, area_code=area_code)
+        except ValueError as exc:
+            return error_response("INVALID_PARAMS", str(exc), 400)
         return success_response("screen payload loaded", payload)
 
 

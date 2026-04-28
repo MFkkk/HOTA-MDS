@@ -52,8 +52,8 @@ function buildApiUrl(pathname) {
   return `${baseUrl}${pathname}`;
 }
 
-async function fetchScreenPayload(screenKey) {
-  const response = await fetch(buildApiUrl(`/api/screens/${screenKey}`));
+async function fetchScreenPayload(areaCode, screenKey) {
+  const response = await fetch(buildApiUrl(`/api/screens/${encodeURIComponent(areaCode)}/${screenKey}`));
   const responseText = await response.text();
   let payload = null;
 
@@ -954,8 +954,9 @@ function RightScreen({ payload, errorMessage, fullscreenState, screenRef }) {
   );
 }
 
-function ScreenFallback({ screenKey, errorMessage }) {
+function ScreenFallback({ areaCode, screenKey, errorMessage }) {
   const screenName = screenKey === "left" ? "左屏" : "右屏";
+  const safeAreaCode = areaCode || "default";
 
   return (
     <main className="screen-shell screen-fallback">
@@ -964,8 +965,8 @@ function ScreenFallback({ screenKey, errorMessage }) {
         <h1>{screenName}展示页暂时不可用</h1>
         <p>{errorMessage || "后端展示接口暂时未返回数据。"}</p>
         <div className="quick-links" aria-label="快速入口">
-          <a href="/screen/left">/screen/left</a>
-          <a href="/screen/right">/screen/right</a>
+          <a href={`/screen/${safeAreaCode}/left`}>{`/screen/${safeAreaCode}/left`}</a>
+          <a href={`/screen/${safeAreaCode}/right`}>{`/screen/${safeAreaCode}/right`}</a>
           <a href="/admin/login">/admin/login</a>
         </div>
       </section>
@@ -973,7 +974,7 @@ function ScreenFallback({ screenKey, errorMessage }) {
   );
 }
 
-function ScreenDisplay({ screenKey }) {
+function ScreenDisplay({ areaCode, screenKey }) {
   const [payload, setPayload] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const screenRef = useRef(null);
@@ -984,7 +985,7 @@ function ScreenDisplay({ screenKey }) {
 
     async function loadScreen() {
       try {
-        const nextPayload = await fetchScreenPayload(screenKey);
+        const nextPayload = await fetchScreenPayload(areaCode, screenKey);
         if (cancelled) {
           return;
         }
@@ -1005,10 +1006,10 @@ function ScreenDisplay({ screenKey }) {
       cancelled = true;
       window.clearInterval(timerId);
     };
-  }, [screenKey]);
+  }, [areaCode, screenKey]);
 
   if (!payload) {
-    return <ScreenFallback errorMessage={errorMessage} screenKey={screenKey} />;
+    return <ScreenFallback areaCode={areaCode} errorMessage={errorMessage} screenKey={screenKey} />;
   }
 
   if (screenKey === "left") {

@@ -194,7 +194,14 @@ class CodeMapping(ReservedFieldsMixin, TimestampedModel):
 class ScreenConfig(ReservedFieldsMixin, TimestampedModel):
     SCREEN_CHOICES = [("left", "左屏"), ("right", "右屏")]
 
-    screen_key = models.CharField(max_length=16, choices=SCREEN_CHOICES, unique=True)
+    area = models.ForeignKey(
+        Area,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="screen_configs",
+    )
+    screen_key = models.CharField(max_length=16, choices=SCREEN_CHOICES)
     title = models.CharField(max_length=128)
     subtitle = models.CharField(max_length=255, blank=True)
     rotation_interval_seconds = models.PositiveIntegerField(default=60)
@@ -204,7 +211,13 @@ class ScreenConfig(ReservedFieldsMixin, TimestampedModel):
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["screen_key"]
+        ordering = ["area__code", "screen_key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["area", "screen_key"],
+                name="uniq_area_screen_config",
+            ),
+        ]
 
     def __str__(self):
         return self.screen_key

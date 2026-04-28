@@ -35,12 +35,14 @@ function App() {
     return <AdminApp navigate={navigate} pathname={pathname} />;
   }
 
-  if (pathname === "/screen/left") {
-    return <ScreenDisplay screenKey="left" />;
+  const leftMatch = pathname.match(/^\/screen\/([^/]+)\/left$/);
+  if (leftMatch) {
+    return <ScreenDisplay areaCode={decodeURIComponent(leftMatch[1])} screenKey="left" />;
   }
 
-  if (pathname === "/screen/right") {
-    return <ScreenDisplay screenKey="right" />;
+  const rightMatch = pathname.match(/^\/screen\/([^/]+)\/right$/);
+  if (rightMatch) {
+    return <ScreenDisplay areaCode={decodeURIComponent(rightMatch[1])} screenKey="right" />;
   }
 
   return (

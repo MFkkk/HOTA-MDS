@@ -164,6 +164,9 @@ class CodeMappingSerializer(CamelCaseModelSerializer):
 
 
 class ScreenConfigSerializer(CamelCaseModelSerializer):
+    area_id = serializers.PrimaryKeyRelatedField(source="area", queryset=Area.objects.all(), allow_null=True, required=False)
+    area_name = serializers.CharField(source="area.name", read_only=True)
+
     def validate_page_keys(self, value):
         if not isinstance(value, list):
             raise serializers.ValidationError("pageKeys must be a list")
@@ -179,10 +182,25 @@ class ScreenConfigSerializer(CamelCaseModelSerializer):
             raise serializers.ValidationError("themeSettings must be an object")
         return value
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        instance = getattr(self, "instance", None)
+        area = attrs.get("area", getattr(instance, "area", None))
+        screen_key = attrs.get("screen_key", getattr(instance, "screen_key", None))
+        if screen_key:
+            queryset = ScreenConfig.objects.filter(area=area, screen_key=screen_key)
+            if instance is not None:
+                queryset = queryset.exclude(pk=instance.pk)
+            if queryset.exists():
+                raise serializers.ValidationError("area_id and screen_key must be unique together")
+        return attrs
+
     class Meta:
         model = ScreenConfig
         fields = [
             "id",
+            "area_id",
+            "area_name",
             "screen_key",
             "title",
             "subtitle",

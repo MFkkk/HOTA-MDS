@@ -483,6 +483,7 @@ export const resourceDefinitions = {
     useModalForm: true,
     wideModal: true,
     columns: [
+      { key: "areaName", label: "区域" },
       { key: "screenKey", label: "屏幕" },
       { key: "title", label: "标题" },
       { key: "rotationIntervalSeconds", label: "轮播时长（秒）" },
@@ -490,10 +491,12 @@ export const resourceDefinitions = {
     ],
     queryFields: [
       { key: "keyword", label: "关键字", type: "text", placeholder: "屏幕键/标题/副标题" },
+      { key: "area_id", label: "区域", type: "resourceSelect", resource: "areas", allowBlank: true },
       { key: "screen_key", label: "屏幕", type: "select", options: SCREEN_KEY_OPTIONS },
       { key: "is_active", label: "启用状态", type: "select", options: ACTIVE_STATUS_OPTIONS },
     ],
     fields: [
+      { key: "areaId", label: "区域", type: "resourceSelect", resource: "areas", allowBlank: false, defaultValue: "" },
       {
         key: "screenKey",
         label: "屏幕",

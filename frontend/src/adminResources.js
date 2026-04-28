@@ -113,6 +113,7 @@ export const DEFAULT_ADMIN_RESOURCE = "devices";
 const DATA_SOURCE_BASE_FIELDS = [
   { key: "code", label: "编码", type: "text", required: true, defaultValue: "" },
   { key: "name", label: "名称", type: "text", required: true, defaultValue: "" },
+  { key: "deviceIds", label: "绑定设备", type: "resourceMultiSelect", resource: "devices", allowBlank: true, defaultValue: [] },
   { key: "isEnabled", label: "启用", type: "checkbox", defaultValue: true },
 ];
 
@@ -124,6 +125,7 @@ const DATA_SOURCE_BASE_QUERY_FIELDS = [
 const DATA_SOURCE_BASE_COLUMNS = [
   { key: "code", label: "编码" },
   { key: "name", label: "名称" },
+  { key: "boundDevices", label: "绑定设备", cellFormat: "resourceLinks", resource: "devices" },
   { key: "isEnabled", label: "启用" },
 ];
 
@@ -483,7 +485,7 @@ export const resourceDefinitions = {
     columns: [
       { key: "screenKey", label: "屏幕" },
       { key: "title", label: "标题" },
-      { key: "rotationIntervalSeconds", label: "轮播秒数" },
+      { key: "rotationIntervalSeconds", label: "轮播时长（秒）" },
       { key: "isActive", label: "启用" },
     ],
     queryFields: [
@@ -502,7 +504,7 @@ export const resourceDefinitions = {
       },
       { key: "title", label: "标题", type: "text", required: true, defaultValue: "" },
       { key: "subtitle", label: "副标题", type: "text", defaultValue: "" },
-      { key: "rotationIntervalSeconds", label: "轮播秒数", type: "integer", required: true, defaultValue: 60 },
+      { key: "rotationIntervalSeconds", label: "轮播时长（秒）", type: "integer", required: true, defaultValue: 60 },
       {
         key: "pageKeys",
         label: "子页面显示列表",
@@ -707,6 +709,14 @@ export function parseFieldValue(field, rawValue, fullForm) {
   if (field.type === "resourceSelect") {
     return rawValue === "" ? null : Number(rawValue);
   }
+  if (field.type === "resourceMultiSelect") {
+    if (!Array.isArray(rawValue)) {
+      return [];
+    }
+    return rawValue
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0);
+  }
   if (field.type === "json" || field.type === "screenPageTransfer") {
     if (rawValue === "" && field.omitIfBlank) {
       return OMIT_VALUE;
@@ -785,6 +795,9 @@ export function formatCellValue(value, column) {
     return value ? "是" : "否";
   }
   if (typeof value === "object") {
+    if (column?.cellFormat === "resourceLinks" && Array.isArray(value)) {
+      return value.map((item) => item?.name || item?.code || item?.id).filter(Boolean).join(" / ") || "-";
+    }
     if (value.storageType) {
       return `${value.storageType}${value.hasEncryptedSecret ? " / 已有密文" : ""}`;
     }

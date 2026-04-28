@@ -254,6 +254,13 @@ class RuntimeParameterConfigSerializer(CamelCaseModelSerializer):
 class DataSourceConfigSerializer(CamelCaseModelSerializer):
     secret_config = serializers.JSONField(write_only=True, required=False)
     secret_summary = serializers.SerializerMethodField(read_only=True)
+    device_ids = serializers.PrimaryKeyRelatedField(
+        source="devices",
+        queryset=Device.objects.all(),
+        many=True,
+        required=False,
+    )
+    bound_devices = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DataSourceConfig
@@ -268,6 +275,8 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
             "connection_config",
             "secret_config",
             "secret_summary",
+            "device_ids",
+            "bound_devices",
             "notes",
             "created_at",
             "updated_at",
@@ -292,6 +301,7 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         secret_config = attrs.pop("secret_config", None)
+        devices = attrs.pop("devices", None)
         instance = getattr(self, "instance", None)
         source_type = attrs.get("source_type", getattr(instance, "source_type", None))
 
@@ -317,7 +327,24 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
         except Exception as exc:
             raise serializers.ValidationError(str(exc))
 
+        if devices is not None:
+            attrs["devices"] = devices
+
         return attrs
+
+    def create(self, validated_data):
+        devices = validated_data.pop("devices", None)
+        instance = super().create(validated_data)
+        if devices is not None:
+            instance.devices.set(devices)
+        return instance
+
+    def update(self, instance, validated_data):
+        devices = validated_data.pop("devices", None)
+        updated = super().update(instance, validated_data)
+        if devices is not None:
+            updated.devices.set(devices)
+        return updated
 
     def get_secret_summary(self, obj):
         return {
@@ -326,6 +353,15 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
             "hasEncryptedSecret": bool(obj.secret_ciphertext),
             "keyVersion": obj.secret_key_version or None,
         }
+
+    def get_bound_devices(self, obj):
+        devices = getattr(obj, "_prefetched_objects_cache", {}).get("devices")
+        if devices is None:
+            devices = obj.devices.all()
+        return [
+            {"id": device.id, "code": device.code, "name": device.name}
+            for device in devices
+        ]
 
 
 class MaterialSerializer(CamelCaseModelSerializer):

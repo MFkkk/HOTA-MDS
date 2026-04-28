@@ -355,6 +355,31 @@ class DataSourceHealthSnapshot(TimestampedModel):
         return self.source_key
 
 
+class DataSourceDeviceBinding(TimestampedModel):
+    data_source = models.ForeignKey(
+        "DataSourceConfig",
+        on_delete=models.CASCADE,
+        related_name="device_bindings",
+    )
+    device = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name="data_source_bindings",
+    )
+
+    class Meta:
+        ordering = ["data_source_id", "device_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["data_source", "device"],
+                name="uniq_data_source_device_binding",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.data_source_id}:{self.device_id}"
+
+
 class DataSourceConfig(ReservedFieldsMixin, TimestampedModel):
     STORAGE_NONE = "none"
     STORAGE_ENV_REF = "env_ref"
@@ -388,6 +413,12 @@ class DataSourceConfig(ReservedFieldsMixin, TimestampedModel):
     secret_env_mapping = models.JSONField(default=dict, blank=True)
     secret_ciphertext = models.TextField(blank=True)
     secret_key_version = models.CharField(max_length=32, blank=True)
+    devices = models.ManyToManyField(
+        Device,
+        through="DataSourceDeviceBinding",
+        related_name="data_sources",
+        blank=True,
+    )
     notes = models.TextField(blank=True)
 
     class Meta:

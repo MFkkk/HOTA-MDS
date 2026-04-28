@@ -171,6 +171,7 @@ function ResourceTable({
   onShowHistory,
   onTestRowConnection,
   isTestingConnection,
+  onOpenResourceItem,
 }) {
   const showCheckbox = !resourceDefinition.readOnly;
   const showActions = Boolean(resourceDefinition.useModalForm);
@@ -235,7 +236,31 @@ function ResourceTable({
                   </td>
                 ) : null}
                 {resourceDefinition.columns.map((column) => (
-                  <td className={`col-${column.key}`} key={column.key}>{formatCellValue(item[column.key], column)}</td>
+                  <td className={`col-${column.key}`} key={column.key}>
+                    {column.cellFormat === "resourceLinks" && Array.isArray(item[column.key]) ? (
+                      <div className="resource-link-list">
+                        {item[column.key].length === 0 ? (
+                          "-"
+                        ) : (
+                          item[column.key].map((linkedItem) => (
+                            <button
+                              className="row-action-button row-action-link"
+                              key={`${column.key}-${linkedItem.id}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenResourceItem?.(column.resource, linkedItem.id);
+                              }}
+                              type="button"
+                            >
+                              {linkedItem.name || linkedItem.code || linkedItem.id}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    ) : (
+                      formatCellValue(item[column.key], column)
+                    )}
+                  </td>
                 ))}
                 {showHistoryColumn ? (
                   <td className="col-history" onClick={(e) => e.stopPropagation()}>
@@ -507,7 +532,7 @@ function ScreenPageTransferField({ field, formState, setFormState }) {
                 type="checkbox"
               />
               <span className="admin-transfer-count">{targetKeys.length} 项</span>
-              <span className="admin-transfer-title">已选择（轮播顺序）</span>
+              <span className="admin-transfer-title">已选项</span>
             </label>
           </div>
           <div className="admin-transfer-body">
@@ -602,6 +627,51 @@ function ResourceField({ field, formState, setFormState, relatedOptions }) {
           ))}
         </select>
       </label>
+    );
+  }
+
+  if (field.type === "resourceMultiSelect") {
+    const options = relatedOptions[field.resource] ?? [];
+    const selectedSet = new Set(
+      Array.isArray(value) ? value.map((item) => String(item)) : [],
+    );
+
+    function toggleOption(optionId, checked) {
+      const next = new Set(selectedSet);
+      const key = String(optionId);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      updateValue([...next]);
+    }
+
+    return (
+      <div className="field field--multi-select">
+        <span>{field.label}</span>
+        <p className="field-hint resource-multi-select-hint">可多选；列表过长时可滚动。</p>
+        <div className="resource-multi-select-scroll" role="group" aria-label={field.label}>
+          {options.length === 0 ? (
+            <div className="resource-multi-select-empty">暂无可选设备（请先维护设备台账）</div>
+          ) : (
+            options.map((option) => {
+              const idStr = String(option.id);
+              const labelText = option.code ? `${option.code} - ${option.name}` : option.name;
+              return (
+                <label className="resource-multi-select-row" key={option.id}>
+                  <input
+                    checked={selectedSet.has(idStr)}
+                    onChange={(event) => toggleOption(option.id, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>{labelText}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      </div>
     );
   }
 
@@ -917,6 +987,59 @@ function HistoryDialog({ resourceDefinition, item, token, onClose, onUnauthorize
 }
 
 
+function DeviceDetailDialog({ device, onClose }) {
+  if (!device) {
+    return null;
+  }
+
+  function handleBackdropClick(event) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
+  const fields = [
+    ["编码", device.code],
+    ["名称", device.name],
+    ["设备IP", device.ip],
+    ["区域", device.areaName],
+    ["产线", device.productionLineName],
+    ["状态", device.defaultStatus],
+    ["启用", device.isActive ? "是" : "否"],
+    ["备注", device.notes],
+  ];
+
+  return (
+    <div className="modal-backdrop" onMouseDown={handleBackdropClick}>
+      <div className="modal-dialog modal-dialog--device-detail" role="dialog" aria-modal="true" aria-label="设备详情">
+        <div className="modal-header">
+          <h3>设备详情</h3>
+          <button aria-label="关闭" className="modal-close" onClick={onClose} type="button">
+            ×
+          </button>
+        </div>
+        <div className="modal-body">
+          <div className="device-detail-grid">
+            {fields.map(([label, value]) => (
+              <div
+                className={`device-detail-item${label === "备注" ? " device-detail-item--full" : ""}`}
+                key={label}
+              >
+                <div className="device-detail-label">{label}</div>
+                <div className="device-detail-value">{value === undefined || value === "" ? "—" : String(value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="ghost-button" onClick={onClose} type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function buildPayloadFromForm(resourceDefinition, formState) {
   const payload = {};
   const nestedBuckets = {};
@@ -984,6 +1107,7 @@ function ResourceEditor({ activeResource, token, onUnauthorized }) {
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [modalState, setModalState] = useState(null);
   const [historyTarget, setHistoryTarget] = useState(null);
+  const [deviceDetail, setDeviceDetail] = useState(null);
   const toastTimerRef = useRef(null);
 
   const buildResourceListPath = useCallback(
@@ -1065,7 +1189,7 @@ function ResourceEditor({ activeResource, token, onUnauthorized }) {
   const resourceDependencies = useMemo(() => {
     const nextDependencies = new Set();
     for (const field of resourceDefinition.fields) {
-      if (field.type === "resourceSelect") {
+      if (field.type === "resourceSelect" || field.type === "resourceMultiSelect") {
         nextDependencies.add(field.resource);
       }
     }
@@ -1477,6 +1601,28 @@ function ResourceEditor({ activeResource, token, onUnauthorized }) {
     }
   }
 
+  async function handleOpenResourceItem(resourceKey, itemId) {
+    if (!resourceKey || !itemId) {
+      return;
+    }
+    const definition = resourceDefinitions[resourceKey];
+    if (!definition) {
+      return;
+    }
+    try {
+      const response = await apiRequest(`${definition.endpoint}/${itemId}`, { token });
+      if (resourceKey === "devices") {
+        setDeviceDetail(response.data);
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        onUnauthorized();
+        return;
+      }
+      showToast(error.message || "详情加载失败，请稍后重试。", { variant: httpErrorToastVariant(error.status) });
+    }
+  }
+
   return (
     <section className={`resource-shell${useModalForm ? " resource-shell--single" : ""}`}>
       {toast ? (
@@ -1535,6 +1681,7 @@ function ResourceEditor({ activeResource, token, onUnauthorized }) {
                 onTestRowConnection={handleTestConnectionByItem}
                 onToggleCheck={handleToggleCheck}
                 onToggleCheckAll={handleToggleCheckAll}
+                onOpenResourceItem={handleOpenResourceItem}
                 resourceDefinition={resourceDefinition}
                 selectedId={selectedItem?.id ?? null}
               />
@@ -1617,6 +1764,12 @@ function ResourceEditor({ activeResource, token, onUnauthorized }) {
           resourceDefinition={resourceDefinition}
           showToast={showToast}
           token={token}
+        />
+      ) : null}
+      {deviceDetail ? (
+        <DeviceDetailDialog
+          device={deviceDetail}
+          onClose={() => setDeviceDetail(null)}
         />
       ) : null}
     </section>

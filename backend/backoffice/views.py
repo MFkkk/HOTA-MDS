@@ -349,7 +349,7 @@ class RuntimeParameterConfigViewSet(AdminApiViewSet):
 
 
 class DataSourceConfigViewSet(AdminApiViewSet):
-    queryset = DataSourceConfig.objects.all()
+    queryset = DataSourceConfig.objects.prefetch_related("devices").all()
     serializer_class = DataSourceConfigSerializer
     target_type = "data_source_config"
     search_fields = ["code", "name", "notes"]

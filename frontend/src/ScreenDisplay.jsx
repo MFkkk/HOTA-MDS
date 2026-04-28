@@ -388,6 +388,12 @@ function ScreenStatus({ errorMessage, usingFallback, lastSuccessfulAt }) {
   );
 }
 
+function resolveScreenSubtitle(screen, welcome) {
+  const fromScreen = typeof screen?.subtitle === "string" ? screen.subtitle.trim() : "";
+  const fromWelcome = typeof welcome?.welcomeMessage === "string" ? welcome.welcomeMessage.trim() : "";
+  return fromScreen || fromWelcome || "面向访客的数字化工厂展示";
+}
+
 function ScreenHeader({
   currentTime,
   logoUrl,
@@ -401,7 +407,7 @@ function ScreenHeader({
   isFullscreen,
   setPageIndex,
 }) {
-  const subtitle = screen.subtitle || welcome.welcomeMessage || "面向访客的数字化工厂展示";
+  const subtitle = resolveScreenSubtitle(screen, welcome);
 
   return (
     <header className="screen-header">

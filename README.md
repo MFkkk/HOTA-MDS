@@ -58,26 +58,32 @@
 
 ## 技术栈
 
-| 模块 | 技术 |
-| --- | --- |
-| backend | Django + Django REST Framework |
-| frontend | React + Vite |
-| collector | Python 独立采集服务目录 |
-| database | MySQL |
-| deploy | Docker Compose |
-| target runtime | Ubuntu |
+
+| 模块             | 技术                             |
+| -------------- | ------------------------------ |
+| backend        | Django + Django REST Framework |
+| frontend       | React + Vite                   |
+| collector      | Python 独立采集服务目录                |
+| database       | MySQL                          |
+| deploy         | Docker Compose                 |
+| target runtime | Ubuntu                         |
+
 
 ## 主要路由
 
 | 路由 | 说明 |
 | --- | --- |
 | `http://localhost:8000/api/health` | 后端健康检查 |
-| `http://localhost:8000/api/screens/left` | 左屏展示 API |
-| `http://localhost:8000/api/screens/right` | 右屏展示 API |
-| `http://localhost:3000/screen/left` | 左屏展示页 |
-| `http://localhost:3000/screen/right` | 右屏展示页 |
+| `http://localhost:8000/api/screens/left` | 左屏展示 API（M4） |
+| `http://localhost:8000/api/screens/right` | 右屏展示 API（M4） |
+| `http://localhost:8000/api/admin/auth/login` | 后台管理员登录 API（M2） |
+| `http://localhost:8000/api/admin/auth/me` | 当前管理员信息 API（M2） |
+| `http://localhost:8000/api/admin/data-source-healths` | 数据源健康状态 API（M3/M4 运维查看） |
+| `http://localhost:3000/screen/left` | 左屏展示页（M4） |
+| `http://localhost:3000/screen/right` | 右屏展示页（M4） |
 | `http://localhost:3000/admin/login` | 后台登录页 |
 | `http://localhost:3000/admin/console` | 后台控制台 |
+
 
 ## 本地启动
 
@@ -87,13 +93,13 @@
 cp .env.example .env
 ```
 
-2. 使用 Docker Compose 启动
+1. 使用 Docker Compose 启动
 
 ```bash
 docker compose up --build
 ```
 
-3. 打开路由验证服务
+1. 打开路由验证服务
 
 - 后端健康检查：`http://localhost:8000/api/health`
 - 左屏页面：`http://localhost:3000/screen/left`
@@ -180,3 +186,4 @@ npm run build
 - 前端只读本系统标准 API
 - 真实数据接入由 backend/collector 负责
 - 报修、3D 仿真、内部 Web 报表继续排除在当前优先级之外
+

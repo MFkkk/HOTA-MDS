@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
+import threading
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
@@ -31,7 +33,13 @@ from .serializers import (
 )
 
 
+logger = logging.getLogger(__name__)
 SNAPSHOT_KEY_DEFAULT = "default"
+DEVICE_STATUS_REFRESH_INTERVAL_SECONDS = 30
+_DEVICE_STATUS_REFRESH_LOCK = threading.Lock()
+_DEVICE_STATUS_REFRESH_RUNNING = False
+_DEVICE_STATUS_REFRESH_LAST_TRIGGERED_AT = None
+
 SCREEN_SOURCE_KEYS = {
     "left": ["device", "production", "energy"],
     "right": ["schedule"],
@@ -691,8 +699,42 @@ def _build_area_device_overview(area) -> dict:
 def _refresh_device_runtime_statuses_if_needed() -> None:
     now = timezone.now()
     snapshot = DeviceStatusSnapshot.objects.filter(snapshot_key=SNAPSHOT_KEY_DEFAULT).first()
-    if snapshot and snapshot.source_updated_at and (now - snapshot.source_updated_at).total_seconds() < 30:
+    if snapshot and snapshot.source_updated_at and (
+        now - snapshot.source_updated_at
+    ).total_seconds() < DEVICE_STATUS_REFRESH_INTERVAL_SECONDS:
         return
+    global _DEVICE_STATUS_REFRESH_RUNNING, _DEVICE_STATUS_REFRESH_LAST_TRIGGERED_AT
+    with _DEVICE_STATUS_REFRESH_LOCK:
+        if _DEVICE_STATUS_REFRESH_RUNNING:
+            return
+        if _DEVICE_STATUS_REFRESH_LAST_TRIGGERED_AT and (
+            now - _DEVICE_STATUS_REFRESH_LAST_TRIGGERED_AT
+        ).total_seconds() < DEVICE_STATUS_REFRESH_INTERVAL_SECONDS:
+            return
+        _DEVICE_STATUS_REFRESH_RUNNING = True
+        _DEVICE_STATUS_REFRESH_LAST_TRIGGERED_AT = now
+    threading.Thread(
+        target=_refresh_device_runtime_statuses_worker,
+        name="device-runtime-status-refresh",
+        daemon=True,
+    ).start()
+
+
+def _refresh_device_runtime_statuses_worker() -> None:
+    global _DEVICE_STATUS_REFRESH_RUNNING
+    close_old_connections()
+    try:
+        _refresh_device_runtime_statuses_sync()
+    except Exception:  # noqa: BLE001 - background task should never break request path
+        logger.exception("device runtime status refresh failed")
+    finally:
+        close_old_connections()
+        with _DEVICE_STATUS_REFRESH_LOCK:
+            _DEVICE_STATUS_REFRESH_RUNNING = False
+
+
+def _refresh_device_runtime_statuses_sync() -> None:
+    now = timezone.now()
 
     active_devices = list(Device.objects.filter(is_active=True).order_by("id"))
     if not active_devices:

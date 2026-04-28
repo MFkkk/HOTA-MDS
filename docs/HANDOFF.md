@@ -96,21 +96,23 @@
 - 已新增 M3 标准化缓存快照、mock 数据装载命令、左右屏展示 API 与左右屏前端展示页。
 - 尚未接入外部系统。
 - 尚未进入真实数据源驱动的大屏页面联调。
-- 尚未把数据源健康状态接到后台前端控制台。
+- 后台前端控制台已可查看数据源健康状态。
 
 ## 4. 下次开发前必须先阅读的文件
 
 按顺序阅读：
 
-1. `需求文档/PRD_和泰智屏系统.md`
+1. `docs/PRD/PRD_和泰智屏系统.md`
 2. `docs/SPEC.md`
 3. `docs/PLAN.md`
 4. `docs/STATUS.md`
 5. `docs/HANDOFF.md`
-6. `docs/IMPLEMENTATION_PLAN.md`
-7. `docs/API_CONTRACT.md`
-8. `docs/DB_MODEL_DRAFT.md`
-9. `README.md`
+6. `docs/AGENTS.md`
+7. `docs/DECISIONS.md`
+8. `docs/API_CONTRACT.md`
+9. `docs/DB_MODEL_DRAFT.md`
+10. `docs/IMPLEMENTATION_PLAN.md`
+11. `README.md`
 
 ## 5. 建议下一轮优先任务
 
@@ -1838,3 +1840,41 @@
   - 顶部 4 状态汇总与甘特图区的垂直间距是否要继续收口
   - 右侧 3D 占位区比例是否还需微调
 - 否则继续等待外部系统资料到位，按既定计划推进 `M5` 前置准备。
+
+## 56. 本轮交接记录
+
+### 本轮目标
+
+- 读取 `README.md` 并按当前事实源对齐核心交接文档。
+- 修正文档中的过时路径与过时状态描述，避免后续接手误读。
+
+### 本轮实际完成
+
+- `docs/HANDOFF.md`
+  - 修正“下次开发前必须先阅读的文件”中 PRD 路径为 `docs/PRD/PRD_和泰智屏系统.md`。
+  - 将必读清单补齐为与 README 一致的核心文档集合，新增：
+    - `docs/AGENTS.md`
+    - `docs/DECISIONS.md`
+  - 保留 `docs/API_CONTRACT.md`、`docs/DB_MODEL_DRAFT.md`、`docs/IMPLEMENTATION_PLAN.md` 作为补充阅读顺序。
+  - 修正过时状态描述：将“尚未把数据源健康状态接到后台前端控制台”更新为“后台前端控制台已可查看数据源健康状态”。
+- `docs/STATUS.md`
+  - 新增本轮“文档对齐”更新与收尾状态记录，明确本轮仅做文档同步，不改动业务实现。
+
+### 本轮未完成
+
+- 未进入 `M5` 真实数据源接入。
+- 未修改后端、前端、collector 业务代码。
+- 未推进现场拼屏终验。
+
+### 修改文件清单
+
+- `docs/HANDOFF.md`
+- `docs/STATUS.md`
+
+### 遇到的问题
+
+- 文档历史记录较长，部分早期段落保留了阶段性语义；本轮只修正 README 明确要求相关的硬性不一致项，不回溯改写历史交接内容。
+
+### 建议下一轮优先任务
+
+- 继续按当前里程碑边界推进：`M4` 展示层收口或 `M5` 前置准备；保持“前端不直连外部系统、后端负责标准化与缓存”。

@@ -1203,6 +1203,10 @@ html[data-theme="dark"] {
   justify-content: flex-start;
 }
 
+.data-table:not(.data-table--datasource) .row-action-group {
+  flex-wrap: nowrap;
+}
+
 .row-action-button {
   background: var(--adm-ghost-bg);
   border: 1px solid var(--adm-ghost-border);

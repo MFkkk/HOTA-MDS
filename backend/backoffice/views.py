@@ -19,6 +19,7 @@ from .models import (
     Employee,
     DisplayContentConfig,
     Material,
+    OpcUaHistorySample,
     OperationLog,
     Order,
     PageModuleSwitch,
@@ -26,6 +27,8 @@ from .models import (
     RuntimeParameterConfig,
     ScreenConfig,
 )
+from .opcua_history_services import ensure_opcua_history_samples
+from .connection_test_services import test_database_connection, test_opcua_connection
 from .serializers import (
     AreaSerializer,
     CodeMappingSerializer,
@@ -35,6 +38,7 @@ from .serializers import (
     EmployeeSerializer,
     DisplayContentConfigSerializer,
     MaterialSerializer,
+    OpcUaHistorySampleSerializer,
     OperationLogSerializer,
     OrderSerializer,
     PageModuleSwitchSerializer,
@@ -353,6 +357,77 @@ class DataSourceConfigViewSet(AdminApiViewSet):
     exact_filter_fields = ["source_type", "secret_storage_type"]
     ordering_fields = ["id", "code", "name", "source_type", "is_enabled", "created_at", "updated_at"]
     default_ordering = ["code"]
+
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        instance = self.get_object()
+        if instance.source_type != "opcua":
+            return success_response(
+                "history loaded",
+                {"items": [], "total": 0, "page": 1, "pageSize": 0},
+            )
+
+        ensure_opcua_history_samples(instance)
+        queryset = OpcUaHistorySample.objects.filter(data_source=instance)
+        total = queryset.count()
+        page = self._parse_positive_int(request.query_params.get("page"), default=1)
+        page_size = self._parse_page_size(request.query_params.get("pageSize"))
+        start = (page - 1) * page_size
+        end = start + page_size
+        serializer = OpcUaHistorySampleSerializer(queryset[start:end], many=True)
+        return success_response(
+            "history loaded",
+            {
+                "items": serializer.data,
+                "total": total,
+                "page": page,
+                "pageSize": page_size,
+            },
+        )
+
+    @action(detail=False, methods=["post"], url_path="test-connection")
+    def test_connection(self, request):
+        payload = request.data or {}
+        source_type = (payload.get("sourceType") or "").strip()
+        connection_config = payload.get("connectionConfig") or {}
+
+        if not source_type:
+            return error_response("INVALID_PARAMS", "sourceType is required", 400)
+
+        if source_type == "opcua":
+            result = test_opcua_connection(connection_config)
+            if not result.ok:
+                return error_response("CONNECTION_FAILED", result.message, 400)
+            return success_response(
+                "connection test ok",
+                {
+                    "sourceType": source_type,
+                    "checkedAt": timezone.now().isoformat(),
+                    "message": result.message,
+                },
+            )
+
+        if source_type == "database":
+            result = test_database_connection(connection_config)
+            if not result.ok:
+                return error_response("CONNECTION_FAILED", result.message, 400)
+            return success_response(
+                "connection test ok",
+                {
+                    "sourceType": source_type,
+                    "checkedAt": timezone.now().isoformat(),
+                    "message": result.message,
+                },
+            )
+
+        return success_response(
+            "connection test ok",
+            {
+                "sourceType": source_type,
+                "checkedAt": timezone.now().isoformat(),
+                "message": "连接参数校验通过（模拟测试）",
+            },
+        )
 
 
 class MaterialViewSet(AdminApiViewSet):

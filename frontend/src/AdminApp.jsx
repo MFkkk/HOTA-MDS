@@ -98,6 +98,11 @@ function LoginPage({ isSubmitting, errorMessage, onSubmit, password, setPassword
 
 
 const THEME_STORAGE_KEY = "admin-theme";
+const ACTIVE_RESOURCE_STORAGE_PREFIX = "hota-mds-admin-active-resource";
+
+function buildActiveResourceStorageKey(username) {
+  return `${ACTIVE_RESOURCE_STORAGE_PREFIX}:${username || "anonymous"}`;
+}
 
 function AdminApp({ pathname, navigate }) {
   const [username, setUsername] = useState("");
@@ -183,10 +188,14 @@ function AdminApp({ pathname, navigate }) {
   }
 
   async function handleLogout() {
+    const usernameForCleanup = currentUser?.username;
     try {
       await apiRequest("/api/admin/auth/logout/", { method: "POST", token });
     } catch {
       // Best-effort logout; clear local session regardless
+    }
+    if (usernameForCleanup) {
+      window.localStorage.removeItem(buildActiveResourceStorageKey(usernameForCleanup));
     }
     clearSession(true);
   }

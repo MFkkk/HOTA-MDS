@@ -369,9 +369,10 @@ class DataSourceConfig(ReservedFieldsMixin, TimestampedModel):
         ("opcua", "OPCUA"),
         ("modbus_tcp", "Modbus TCP"),
         ("sap_rfc", "SAP RFC"),
+        ("database", "数据库"),
         ("schedule_db", "排产数据库"),
         ("energy_db", "能耗数据库"),
-        ("wms", "WMS"),
+        ("wms", "WMS数据库"),
         ("repair", "报修系统"),
         ("custom", "自定义"),
     ]
@@ -414,6 +415,37 @@ class DataSourceConfig(ReservedFieldsMixin, TimestampedModel):
                 raise ValidationError("encrypted storage requires ciphertext and key version")
             if self.secret_env_mapping:
                 raise ValidationError("encrypted storage cannot include env mapping")
+
+
+class OpcUaHistorySample(models.Model):
+    QUALITY_GOOD = "good"
+    QUALITY_UNCERTAIN = "uncertain"
+    QUALITY_BAD = "bad"
+    QUALITY_CHOICES = [
+        (QUALITY_GOOD, "Good"),
+        (QUALITY_UNCERTAIN, "Uncertain"),
+        (QUALITY_BAD, "Bad"),
+    ]
+
+    data_source = models.ForeignKey(
+        "DataSourceConfig",
+        on_delete=models.CASCADE,
+        related_name="opcua_history_samples",
+    )
+    node_id = models.CharField(max_length=255)
+    value = models.TextField(blank=True, default="")
+    quality = models.CharField(max_length=16, choices=QUALITY_CHOICES, default=QUALITY_GOOD)
+    sampled_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-sampled_at", "-id"]
+        indexes = [
+            models.Index(fields=["data_source", "-sampled_at"], name="opcua_hist_ds_time_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.data_source_id}:{self.node_id}@{self.sampled_at:%Y-%m-%d %H:%M:%S}"
 
 
 class Material(ReservedFieldsMixin, TimestampedModel):

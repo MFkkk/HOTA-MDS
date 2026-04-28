@@ -41,6 +41,20 @@ const SCREEN_KEY_OPTIONS = [
   { value: "right", label: "右屏" },
 ];
 
+/** 子页面键与中文名（与大屏前端 PAGE_PRESETS 一致），供后台穿梭框使用 */
+export const SCREEN_PAGE_KEY_OPTIONS = {
+  left: {
+    overview: "综合总览",
+    operations: "运行与产量",
+    energy: "能耗与占位",
+  },
+  right: {
+    schedule: "排产总览",
+    risk: "风险说明",
+    simulation: "仿真预留",
+  },
+};
+
 const ENTITY_TYPE_OPTIONS = [
   { value: "device", label: "设备" },
   { value: "production_line", label: "产线" },
@@ -50,17 +64,17 @@ const ENTITY_TYPE_OPTIONS = [
 ];
 
 const DATA_SOURCE_TYPE_OPTIONS = [
-  { value: "opcua", label: "OPCUA" },
+  { value: "opcua", label: "OPC UA" },
   { value: "modbus_tcp", label: "Modbus TCP" },
   { value: "sap_rfc", label: "SAP RFC" },
-  { value: "schedule_db", label: "排产数据库" },
-  { value: "energy_db", label: "能耗数据库" },
-  { value: "wms", label: "WMS" },
+  { value: "database", label: "数据库" },
   { value: "repair", label: "报修系统" },
-  { value: "custom", label: "自定义" },
 ];
 
-/** 后台侧栏一级分组与二级资源键（顺序即展示顺序）。 */
+/**
+ * 后台侧栏一级分组与二级资源键（顺序即展示顺序）。
+ * `items` 可以是字符串（资源 key）或者 `{ kind: "submenu", id, label, children }` 形式的二级菜单。
+ */
 export const ADMIN_MENU_GROUPS = [
   {
     id: "basic",
@@ -75,17 +89,158 @@ export const ADMIN_MENU_GROUPS = [
   {
     id: "system",
     label: "系统设置",
-    items: ["codeMappings", "dataSourceConfigs", "operationLogs"],
+    items: [
+      "codeMappings",
+      {
+        kind: "submenu",
+        id: "dataSources",
+        label: "数据源配置",
+        children: [
+          "dataSourceOpcua",
+          "dataSourceModbusTcp",
+          "dataSourceSapRfc",
+          "dataSourceDatabase",
+          "dataSourceRepair",
+        ],
+      },
+      "operationLogs",
+    ],
   },
 ];
 
 export const DEFAULT_ADMIN_RESOURCE = "devices";
+
+const DATA_SOURCE_BASE_FIELDS = [
+  { key: "code", label: "编码", type: "text", required: true, defaultValue: "" },
+  { key: "name", label: "名称", type: "text", required: true, defaultValue: "" },
+  { key: "isEnabled", label: "启用", type: "checkbox", defaultValue: true },
+];
+
+const DATA_SOURCE_BASE_QUERY_FIELDS = [
+  { key: "keyword", label: "关键字", type: "text", placeholder: "编码/名称/备注" },
+  { key: "is_enabled", label: "启用状态", type: "select", options: ACTIVE_STATUS_OPTIONS },
+];
+
+const DATA_SOURCE_BASE_COLUMNS = [
+  { key: "code", label: "编码" },
+  { key: "name", label: "名称" },
+  { key: "isEnabled", label: "启用" },
+];
+
+const DATA_SOURCE_TYPE_FIELDS = {
+  opcua: [
+    {
+      key: "endpointUrl",
+      label: "服务器地址 (Endpoint URL)",
+      type: "text",
+      storage: "connectionConfig",
+      placeholder: "opc.tcp://192.168.32.61:4840",
+      defaultValue: "",
+      required: true,
+    },
+    {
+      key: "nodeId",
+      label: "节点 ID",
+      type: "text",
+      storage: "connectionConfig",
+      placeholder: "ns=2;s=/Channel/State/chanStatus",
+      defaultValue: "",
+      required: true,
+    },
+    {
+      key: "username",
+      label: "用户名",
+      type: "text",
+      storage: "connectionConfig",
+      placeholder: "OpcUaClient",
+      defaultValue: "",
+    },
+    {
+      key: "password",
+      label: "密码",
+      type: "text",
+      storage: "connectionConfig",
+      defaultValue: "",
+    },
+  ],
+  database: [
+    {
+      key: "engine",
+      label: "数据库类型",
+      type: "select",
+      storage: "connectionConfig",
+      defaultValue: "mysql",
+      required: true,
+      options: [
+        { value: "mysql", label: "MySQL / MariaDB" },
+        { value: "postgresql", label: "PostgreSQL" },
+        { value: "sqlserver", label: "SQL Server" },
+        { value: "oracle", label: "Oracle" },
+      ],
+    },
+    { key: "host", label: "主机", type: "text", storage: "connectionConfig", defaultValue: "", required: true, placeholder: "127.0.0.1" },
+    { key: "port", label: "端口", type: "integer", storage: "connectionConfig", defaultValue: "", placeholder: "3306" },
+    { key: "database", label: "数据库名", type: "text", storage: "connectionConfig", defaultValue: "" },
+    { key: "username", label: "用户名", type: "text", storage: "connectionConfig", defaultValue: "" },
+    { key: "password", label: "密码", type: "text", storage: "connectionConfig", defaultValue: "" },
+  ],
+  modbus_tcp: [],
+  sap_rfc: [],
+  repair: [],
+};
+
+const DATA_SOURCE_TYPE_LABELS = {
+  opcua: "OPC UA",
+  modbus_tcp: "Modbus TCP",
+  sap_rfc: "SAP RFC",
+  database: "数据库",
+  repair: "报修系统",
+};
+
+function buildDataSourceResources() {
+  const result = {};
+  for (const sourceType of Object.keys(DATA_SOURCE_TYPE_FIELDS)) {
+    const label = DATA_SOURCE_TYPE_LABELS[sourceType];
+    const customFields = DATA_SOURCE_TYPE_FIELDS[sourceType];
+    const resourceKey = dataSourceResourceKey(sourceType);
+    result[resourceKey] = {
+      label,
+      itemLabel: `${label} 数据源`,
+      endpoint: "/api/admin/data-source-configs",
+      useModalForm: true,
+      fixedSourceType: sourceType,
+      fixedListParams: { source_type: sourceType },
+      supportsTestConnection: true,
+      supportsHistory: sourceType === "opcua",
+      columns: DATA_SOURCE_BASE_COLUMNS,
+      queryFields: DATA_SOURCE_BASE_QUERY_FIELDS,
+      fields: [
+        ...DATA_SOURCE_BASE_FIELDS,
+        ...customFields,
+        ...RESERVED_FIELDS,
+      ],
+    };
+  }
+  return result;
+}
+
+export function dataSourceResourceKey(sourceType) {
+  const map = {
+    opcua: "dataSourceOpcua",
+    modbus_tcp: "dataSourceModbusTcp",
+    sap_rfc: "dataSourceSapRfc",
+    database: "dataSourceDatabase",
+    repair: "dataSourceRepair",
+  };
+  return map[sourceType] ?? `dataSource_${sourceType}`;
+}
 
 export const resourceDefinitions = {
   areas: {
     label: "区域台账",
     endpoint: "/api/admin/areas",
     itemLabel: "区域",
+    useModalForm: true,
     columns: [
       { key: "code", label: "编码" },
       { key: "name", label: "名称" },
@@ -112,6 +267,7 @@ export const resourceDefinitions = {
     label: "产线台账",
     endpoint: "/api/admin/production-lines",
     itemLabel: "产线",
+    useModalForm: true,
     columns: [
       { key: "code", label: "编码" },
       { key: "name", label: "名称" },
@@ -138,6 +294,7 @@ export const resourceDefinitions = {
     label: "设备台账",
     endpoint: "/api/admin/devices",
     itemLabel: "设备",
+    useModalForm: true,
     columns: [
       { key: "code", label: "编码" },
       { key: "name", label: "名称" },
@@ -178,6 +335,7 @@ export const resourceDefinitions = {
     label: "员工台账",
     endpoint: "/api/admin/employees",
     itemLabel: "员工",
+    useModalForm: true,
     columns: [
       { key: "employeeNo", label: "员工号" },
       { key: "name", label: "姓名" },
@@ -211,6 +369,7 @@ export const resourceDefinitions = {
     label: "物料台账",
     endpoint: "/api/admin/materials",
     itemLabel: "物料",
+    useModalForm: true,
     columns: [
       { key: "code", label: "编码" },
       { key: "name", label: "名称" },
@@ -238,6 +397,7 @@ export const resourceDefinitions = {
     label: "订单台账",
     endpoint: "/api/admin/orders",
     itemLabel: "订单",
+    useModalForm: true,
     columns: [
       { key: "orderNo", label: "订单号" },
       { key: "materialName", label: "物料" },
@@ -283,6 +443,7 @@ export const resourceDefinitions = {
     label: "编码映射",
     endpoint: "/api/admin/code-mappings",
     itemLabel: "编码映射",
+    useModalForm: true,
     columns: [
       { key: "entityType", label: "对象类型" },
       { key: "sourceSystem", label: "来源系统" },
@@ -317,6 +478,8 @@ export const resourceDefinitions = {
     label: "左右屏配置",
     endpoint: "/api/admin/screen-configs",
     itemLabel: "屏幕配置",
+    useModalForm: true,
+    wideModal: true,
     columns: [
       { key: "screenKey", label: "屏幕" },
       { key: "title", label: "标题" },
@@ -340,7 +503,13 @@ export const resourceDefinitions = {
       { key: "title", label: "标题", type: "text", required: true, defaultValue: "" },
       { key: "subtitle", label: "副标题", type: "text", defaultValue: "" },
       { key: "rotationIntervalSeconds", label: "轮播秒数", type: "integer", required: true, defaultValue: 60 },
-      { key: "pageKeys", label: "页面键列表", type: "json", defaultValue: ["overview"] },
+      {
+        key: "pageKeys",
+        label: "子页面显示列表",
+        type: "screenPageTransfer",
+        screenKeyField: "screenKey",
+        defaultValue: ["overview"],
+      },
       { key: "moduleSettings", label: "模块开关", type: "json", defaultValue: {} },
       { key: "themeSettings", label: "主题配置", type: "json", defaultValue: {} },
       { key: "isActive", label: "启用", type: "checkbox", defaultValue: true },
@@ -351,6 +520,7 @@ export const resourceDefinitions = {
     label: "页面模块开关",
     endpoint: "/api/admin/page-module-switches",
     itemLabel: "模块开关",
+    useModalForm: true,
     columns: [
       { key: "screenKey", label: "屏幕", options: SCREEN_KEY_OPTIONS },
       { key: "moduleKey", label: "模块标识" },
@@ -384,6 +554,7 @@ export const resourceDefinitions = {
     label: "欢迎展示配置",
     endpoint: "/api/admin/display-content-configs",
     itemLabel: "展示内容配置",
+    useModalForm: true,
     columns: [
       { key: "configKey", label: "配置键" },
       { key: "companyName", label: "公司名称" },
@@ -410,6 +581,7 @@ export const resourceDefinitions = {
     label: "运行参数配置",
     endpoint: "/api/admin/runtime-parameter-configs",
     itemLabel: "运行参数",
+    useModalForm: true,
     columns: [
       { key: "configKey", label: "配置键" },
       { key: "singleDayEffectiveWorkHours", label: "日有效工时" },
@@ -435,50 +607,7 @@ export const resourceDefinitions = {
       ...RESERVED_FIELDS,
     ],
   },
-  dataSourceConfigs: {
-    label: "数据源配置",
-    endpoint: "/api/admin/data-source-configs",
-    itemLabel: "数据源",
-    columns: [
-      { key: "code", label: "编码" },
-      { key: "name", label: "名称" },
-      { key: "sourceType", label: "类型" },
-      { key: "secretSummary", label: "密钥保护" },
-    ],
-    queryFields: [
-      { key: "keyword", label: "关键字", type: "text", placeholder: "编码/名称/备注" },
-      { key: "source_type", label: "类型", type: "select", options: DATA_SOURCE_TYPE_OPTIONS },
-      { key: "is_enabled", label: "启用状态", type: "select", options: ACTIVE_STATUS_OPTIONS },
-      { key: "created_at_start", label: "创建开始", type: "date" },
-      { key: "created_at_end", label: "创建结束", type: "date" },
-    ],
-    fields: [
-      { key: "code", label: "编码", type: "text", required: true, defaultValue: "" },
-      { key: "name", label: "名称", type: "text", required: true, defaultValue: "" },
-      {
-        key: "sourceType",
-        label: "数据源类型",
-        type: "select",
-        required: true,
-        defaultValue: "custom",
-        options: DATA_SOURCE_TYPE_OPTIONS,
-      },
-      { key: "isEnabled", label: "启用", type: "checkbox", defaultValue: true },
-      { key: "refreshIntervalSeconds", label: "刷新秒数", type: "integer", required: true, defaultValue: 300 },
-      { key: "timeoutSeconds", label: "超时秒数", type: "integer", required: true, defaultValue: 30 },
-      { key: "connectionConfig", label: "连接配置", type: "json", defaultValue: {} },
-      {
-        key: "secretConfig",
-        label: "密钥配置",
-        type: "json",
-        defaultValue: {},
-        omitIfBlank: true,
-        placeholder: '{\n  "storageType": "env_ref",\n  "envMapping": {\n    "password": "SAP_MAIN_PASSWORD"\n  }\n}',
-      },
-      { key: "notes", label: "备注", type: "textarea", defaultValue: "" },
-      ...RESERVED_FIELDS,
-    ],
-  },
+  ...buildDataSourceResources(),
   operationLogs: {
     label: "操作日志",
     endpoint: "/api/admin/operation-logs",
@@ -504,7 +633,7 @@ export function stringifyJson(value) {
 export function createEmptyForm(resourceDefinition) {
   const nextState = {};
   for (const field of resourceDefinition.fields) {
-    if (field.type === "json") {
+    if (field.type === "json" || field.type === "screenPageTransfer") {
       const rawDefault = field.defaultValue ?? {};
       nextState[field.key] = Object.keys(rawDefault).length === 0 && field.omitIfBlank ? "" : stringifyJson(rawDefault);
     } else if (field.type === "checkbox") {
@@ -514,6 +643,18 @@ export function createEmptyForm(resourceDefinition) {
     }
   }
   return nextState;
+}
+
+
+function readNestedValue(item, storageKey, fieldKey) {
+  const container = item?.[storageKey];
+  if (container === null || container === undefined) {
+    return undefined;
+  }
+  if (typeof container !== "object") {
+    return undefined;
+  }
+  return container[fieldKey];
 }
 
 
@@ -529,26 +670,31 @@ export function createEmptyQuery(resourceDefinition) {
 export function createFormFromItem(resourceDefinition, item) {
   const nextState = {};
   for (const field of resourceDefinition.fields) {
-    const value = item?.[field.key];
-    if (field.type === "json") {
-      if (value === undefined && field.omitIfBlank) {
+    const rawValue = field.storage
+      ? readNestedValue(item, field.storage, field.key)
+      : item?.[field.key];
+    if (field.type === "json" || field.type === "screenPageTransfer") {
+      if (rawValue === undefined && field.omitIfBlank) {
         nextState[field.key] = "";
       } else {
-        nextState[field.key] = stringifyJson(value ?? field.defaultValue ?? {});
+        nextState[field.key] = stringifyJson(rawValue ?? field.defaultValue ?? {});
       }
     } else if (field.type === "checkbox") {
-      nextState[field.key] = Boolean(value);
-    } else if (value === null || value === undefined) {
+      nextState[field.key] = Boolean(rawValue);
+    } else if (rawValue === null || rawValue === undefined) {
       nextState[field.key] = field.defaultValue ?? "";
     } else {
-      nextState[field.key] = value;
+      nextState[field.key] = rawValue;
     }
   }
   return nextState;
 }
 
 
-export function parseFieldValue(field, rawValue) {
+/**
+ * @param {object} [fullForm]  全表状态；`screenPageTransfer` 需用其 `screenKey` 与备选项对齐
+ */
+export function parseFieldValue(field, rawValue, fullForm) {
   if (field.type === "checkbox") {
     return Boolean(rawValue);
   }
@@ -561,14 +707,34 @@ export function parseFieldValue(field, rawValue) {
   if (field.type === "resourceSelect") {
     return rawValue === "" ? null : Number(rawValue);
   }
-  if (field.type === "json") {
+  if (field.type === "json" || field.type === "screenPageTransfer") {
     if (rawValue === "" && field.omitIfBlank) {
       return OMIT_VALUE;
     }
     if (rawValue === "") {
+      if (field.type === "screenPageTransfer") {
+        return Array.isArray(field.defaultValue) ? field.defaultValue : [];
+      }
       return field.defaultValue ?? {};
     }
-    return JSON.parse(rawValue);
+    const parsed = JSON.parse(rawValue);
+    if (field.type === "screenPageTransfer") {
+      if (!Array.isArray(parsed)) {
+        return Array.isArray(field.defaultValue) ? field.defaultValue : [];
+      }
+      const keys = parsed.filter((k) => typeof k === "string");
+      if (fullForm) {
+        const sk = fullForm[field.screenKeyField ?? "screenKey"] || "left";
+        const valid = Object.keys(SCREEN_PAGE_KEY_OPTIONS[sk] || {});
+        const filtered = keys.filter((k) => valid.includes(k));
+        if (filtered.length > 0) {
+          return filtered;
+        }
+        return sk === "right" ? ["schedule"] : ["overview"];
+      }
+      return keys;
+    }
+    return parsed;
   }
   return rawValue;
 }

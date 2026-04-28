@@ -266,6 +266,37 @@ class BackofficeApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data["code"], "INVALID_INPUT")
 
+    def test_data_source_config_trims_connection_config_to_required_keys(self):
+        response = self.client.post(
+            "/api/admin/data-source-configs",
+            {
+                "code": "opcua-trim",
+                "name": "OPC UA Trim",
+                "sourceType": "opcua",
+                "connectionConfig": {
+                    "endpointUrl": "opc.tcp://192.168.32.61:4840",
+                    "nodeId": "ns=2;s=/Channel/State/chanStatus",
+                    "username": "OpcUaClient",
+                    "password": "secret",
+                    "assets": [{"code": "D01", "name": "设备1"}],
+                    "unexpected": "drop-me",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        item = DataSourceConfig.objects.get(code="opcua-trim")
+        self.assertEqual(
+            item.connection_config,
+            {
+                "endpointUrl": "opc.tcp://192.168.32.61:4840",
+                "nodeId": "ns=2;s=/Channel/State/chanStatus",
+                "username": "OpcUaClient",
+                "password": "secret",
+            },
+        )
+
     def test_operation_logs_record_admin_actions(self):
         self.client.post("/api/admin/areas", {"code": "A02", "name": "测试区"}, format="json")
         response = self.client.get("/api/admin/operation-logs?page=1&pageSize=10")

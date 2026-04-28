@@ -35,3 +35,6 @@ logs/
 
 # Local artifacts
 *.tmp
+
+# Other
+.obsidian/

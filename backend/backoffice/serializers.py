@@ -11,6 +11,7 @@ from .models import (
     EnergySnapshot,
     DisplayContentConfig,
     Material,
+    OpcUaHistorySample,
     OperationLog,
     ProductionSnapshot,
     Order,
@@ -23,6 +24,36 @@ from .models import (
 
 
 RESERVED_FIELDS = ["reserved_1", "reserved_2", "reserved_3", "reserved_4", "reserved_5"]
+
+CONNECTION_CONFIG_ALLOWED_KEYS = {
+    "opcua": {"endpointUrl", "nodeId", "username", "password"},
+    "database": {"engine", "host", "port", "database", "username", "password"},
+    "modbus_tcp": set(),
+    "sap_rfc": set(),
+    "repair": set(),
+}
+
+
+def _should_keep_connection_value(value):
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() != ""
+    if isinstance(value, (list, dict)):
+        return len(value) > 0
+    return True
+
+
+def sanitize_connection_config(source_type, connection_config):
+    if not isinstance(connection_config, dict):
+        return {}
+    allowed_keys = CONNECTION_CONFIG_ALLOWED_KEYS.get(source_type, set())
+    cleaned = {}
+    for key in allowed_keys:
+        value = connection_config.get(key)
+        if _should_keep_connection_value(value):
+            cleaned[key] = value
+    return cleaned
 
 
 class CamelCaseModelSerializer(serializers.ModelSerializer):
@@ -262,6 +293,7 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
         attrs = super().validate(attrs)
         secret_config = attrs.pop("secret_config", None)
         instance = getattr(self, "instance", None)
+        source_type = attrs.get("source_type", getattr(instance, "source_type", None))
 
         if secret_config is None and instance is None:
             secret_config = {"storageType": DataSourceConfig.STORAGE_NONE}
@@ -272,6 +304,9 @@ class DataSourceConfigSerializer(CamelCaseModelSerializer):
             attrs["secret_env_mapping"] = secret_config.get("envMapping", {}) if storage_type == DataSourceConfig.STORAGE_ENV_REF else {}
             attrs["secret_ciphertext"] = secret_config.get("ciphertext", "") if storage_type == DataSourceConfig.STORAGE_ENCRYPTED else ""
             attrs["secret_key_version"] = secret_config.get("keyVersion", "") if storage_type == DataSourceConfig.STORAGE_ENCRYPTED else ""
+
+        if "connection_config" in attrs:
+            attrs["connection_config"] = sanitize_connection_config(source_type, attrs.get("connection_config"))
 
         probe_instance = instance or DataSourceConfig()
         for attr, value in attrs.items():
@@ -391,6 +426,22 @@ class OperationLogSerializer(CamelCaseModelSerializer):
             "request_method",
             "request_path",
             "change_summary",
+            "created_at",
+        ]
+
+
+class OpcUaHistorySampleSerializer(CamelCaseModelSerializer):
+    quality_label = serializers.CharField(source="get_quality_display", read_only=True)
+
+    class Meta:
+        model = OpcUaHistorySample
+        fields = [
+            "id",
+            "node_id",
+            "value",
+            "quality",
+            "quality_label",
+            "sampled_at",
             "created_at",
         ]
 

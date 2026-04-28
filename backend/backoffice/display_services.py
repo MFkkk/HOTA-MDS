@@ -366,7 +366,10 @@ def _build_production_snapshot(current_time, source_updated_at, runtime_paramete
         planned_start_at = timezone.localtime(current_time - timedelta(hours=2) + timedelta(hours=index))
         planned_end_at = planned_start_at + timedelta(hours=10 + (index % 4) * 3)
         remaining_quantity = max(target_quantity - produced_quantity, 0)
-        standard_capacity_per_hour = Decimal(str(runtime_parameters["defaultStandardCapacityPerHour"]))
+        standard_capacity_per_hour = _to_positive_decimal(
+            runtime_parameters.get("defaultStandardCapacityPerHour"),
+            Decimal(str(DEFAULT_RUNTIME_PARAMETERS["defaultStandardCapacityPerHour"])),
+        )
         estimated_hours = Decimal(str(remaining_quantity)) / standard_capacity_per_hour
         if line_number % 4 == 0:
             estimated_hours += Decimal("20")
@@ -584,16 +587,34 @@ def _get_runtime_parameters() -> dict:
     config = RuntimeParameterConfig.objects.filter(is_active=True).order_by("config_key").first()
     if not config:
         return DEFAULT_RUNTIME_PARAMETERS
+    default_standard_capacity_per_hour = _to_positive_decimal(
+        config.default_standard_capacity_per_hour,
+        Decimal(str(DEFAULT_RUNTIME_PARAMETERS["defaultStandardCapacityPerHour"])),
+    )
+    gantt_window_days = _to_positive_int(config.gantt_window_days, DEFAULT_RUNTIME_PARAMETERS["ganttWindowDays"])
+    auto_scroll_rows_threshold = _to_positive_int(
+        config.auto_scroll_rows_threshold,
+        DEFAULT_RUNTIME_PARAMETERS["autoScrollRowsThreshold"],
+    )
+    recent_capacity_window_hours = _to_positive_int(
+        config.recent_capacity_window_hours,
+        DEFAULT_RUNTIME_PARAMETERS["recentCapacityWindowHours"],
+    )
+    production_trend_window_hours = _to_positive_int(
+        config.production_trend_window_hours,
+        DEFAULT_RUNTIME_PARAMETERS["productionTrendWindowHours"],
+    )
+
     return {
         "configKey": config.config_key,
         "singleDayEffectiveWorkHours": str(config.single_day_effective_work_hours),
-        "defaultStandardCapacityPerHour": str(config.default_standard_capacity_per_hour),
+        "defaultStandardCapacityPerHour": str(default_standard_capacity_per_hour),
         "delayWarningBufferHours": str(config.delay_warning_buffer_hours),
-        "ganttWindowDays": config.gantt_window_days,
+        "ganttWindowDays": gantt_window_days,
         "autoScrollEnabled": config.auto_scroll_enabled,
-        "autoScrollRowsThreshold": config.auto_scroll_rows_threshold,
-        "recentCapacityWindowHours": config.recent_capacity_window_hours,
-        "productionTrendWindowHours": config.production_trend_window_hours,
+        "autoScrollRowsThreshold": auto_scroll_rows_threshold,
+        "recentCapacityWindowHours": recent_capacity_window_hours,
+        "productionTrendWindowHours": production_trend_window_hours,
         "notes": config.notes,
         "isActive": config.is_active,
     }
@@ -609,6 +630,22 @@ def _percentage(numerator: int, denominator: int) -> float:
         return 0.0
     value = Decimal(numerator) * Decimal("100.00") / Decimal(denominator)
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _to_positive_decimal(value, fallback: Decimal) -> Decimal:
+    try:
+        parsed = Decimal(str(value))
+    except Exception:
+        return fallback
+    return parsed if parsed > 0 else fallback
+
+
+def _to_positive_int(value, fallback: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed > 0 else fallback
 
 
 def _max_iso_datetime(values) -> str | None:

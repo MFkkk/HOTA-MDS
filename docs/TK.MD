@@ -68,10 +68,10 @@
 
 #### 4. 机器人数据点详细定义 (NS4)
 
-| 中文描述 | 变量标识符 | Node ID (建议格式) | 数据类型 | 备注 |
-| :--- | :--- | :--- | :--- | :--- |
-| 运行状态 | `Robot_Run` | `NS4|Numeric|2` | Numeric | 状态值 |
-| 停止状态 | `Robot_Stop` | `NS4|Numeric|3` | Numeric | 状态值 |
-| 故障状态 | `Robot_Fault` | `NS4|Numeric|4` | Numeric | 状态值 |
-| 物料编码 | `Robot_MaterialCode` | `NS4|Numeric|5` | Numeric | 当前加工物料代码 |
-| 生产数量 | `Robot_ProductionCount` | `NS4|Numeric|6` | Numeric | 累计/当前生产数量 |
+| 中文描述 | 变量标识符                   | Node ID (建议格式) | 数据类型    | 备注  |         |           |
+| :--- | :---------------------- | :------------- | :------ | :-- | ------- | --------- |
+| 运行状态 | `Robot_Run`             | `NS4           | Numeric | 2`  | Numeric | 状态值       |
+| 停止状态 | `Robot_Stop`            | `NS4           | Numeric | 3`  | Numeric | 状态值       |
+| 故障状态 | `Robot_Fault`           | `NS4           | Numeric | 4`  | Numeric | 状态值       |
+| 物料编码 | `Robot_MaterialCode`    | `NS4           | Numeric | 5`  | Numeric | 当前加工物料代码  |
+| 生产数量 | `Robot_ProductionCount` | `NS4           | Numeric | 6`  | Numeric | 累计/当前生产数量 |

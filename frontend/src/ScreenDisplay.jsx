@@ -54,17 +54,43 @@ function buildApiUrl(pathname) {
 
 async function fetchScreenPayload(screenKey) {
   const response = await fetch(buildApiUrl(`/api/screens/${screenKey}`));
-  const payload = await response.json().catch(() => ({
-    success: false,
-    message: "screen payload is invalid",
-    data: null,
-  }));
+  const responseText = await response.text();
+  let payload = null;
 
-  if (!response.ok || payload.success === false) {
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      payload?.message ||
+      `screen request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  if (!payload) {
+    const sample = responseText.trim().slice(0, 120);
+    const hint = sample ? `, response starts with: ${sample}` : "";
+    throw new Error(`screen payload is invalid${hint}`);
+  }
+
+  if (payload.success === false) {
     throw new Error(payload.message || "screen request failed");
   }
 
-  return payload.data;
+  if (payload.data && typeof payload.data === "object") {
+    return payload.data;
+  }
+
+  if (payload.screen && payload.content) {
+    return payload;
+  }
+
+  throw new Error("screen payload is invalid");
 }
 
 function formatDateTime(value) {
@@ -308,6 +334,37 @@ function useAutoVerticalScroll(containerRef, enabled) {
   }, [containerRef, enabled]);
 }
 
+/** When `active`, observes container size and auto-scrolls only if content overflows (vertical marquee). */
+function useOverflowAutoScroll(containerRef, active) {
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    if (!active) {
+      setIsOverflowing(false);
+      return undefined;
+    }
+
+    const el = containerRef.current;
+    if (!el) {
+      setIsOverflowing(false);
+      return undefined;
+    }
+
+    const measure = () => {
+      setIsOverflowing(el.scrollHeight - el.clientHeight > 8);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [containerRef, active]);
+
+  useAutoVerticalScroll(containerRef, isOverflowing);
+
+  return isOverflowing;
+}
+
 function ScreenStatus({ errorMessage, usingFallback, lastSuccessfulAt }) {
   const metaDisplay = lastSuccessfulAt?.display ?? {};
   const lastSuccessfulAtLabel = metaDisplay.lastSuccessfulAtLabel || formatDateTime(lastSuccessfulAt?.value || lastSuccessfulAt);
@@ -442,11 +499,12 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
   );
   const lineSummaryScrollRef = useRef(null);
   const energySummaryScrollRef = useRef(null);
-  const shouldAutoScrollLineSummaries = lineSummaries.length > 6;
-  const shouldAutoScrollEnergySummaries = areaSummaries.length > 4;
+  const energyModuleOn = isModuleEnabled(moduleSettings, "energyOverview");
+  const lineScrollActive = lineSummaries.length > 0;
+  const energyScrollActive = energyModuleOn && areaSummaries.length > 0;
 
-  useAutoVerticalScroll(lineSummaryScrollRef, shouldAutoScrollLineSummaries);
-  useAutoVerticalScroll(energySummaryScrollRef, shouldAutoScrollEnergySummaries);
+  const lineListOverflowing = useOverflowAutoScroll(lineSummaryScrollRef, lineScrollActive);
+  const energyListOverflowing = useOverflowAutoScroll(energySummaryScrollRef, energyScrollActive);
 
   const sectionNodes = {
     deviceOverview: (
@@ -480,7 +538,7 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
           <h2>产量执行概览</h2>
           <span>
             {`产线 ${lineSummaries.length} 条`}
-            {shouldAutoScrollLineSummaries ? " · 自动滚动中" : ""}
+            {lineListOverflowing ? " · 自动滚动中" : ""}
           </span>
         </div>
         <div className="metric-grid metric-grid-two">
@@ -501,7 +559,7 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
         {lineSummaries.length > 0 ? (
           <div
             className={
-              shouldAutoScrollLineSummaries
+              lineListOverflowing
                 ? "line-summary-list production-overview-list line-summary-list-scrollable"
                 : "line-summary-list production-overview-list"
             }
@@ -551,13 +609,16 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
       </section>
     ),
     productionTrend: (
-      <section className="screen-panel panel-span-4 production-trend-panel" key="productionTrend">
+      <section
+        className={`screen-panel panel-span-4 production-trend-panel${energyModuleOn ? " production-trend-panel--with-energy" : ""}`}
+        key="productionTrend"
+      >
         <div className="panel-header">
           <h2>近 8 小时产量趋势</h2>
           <span>后端缓存数据</span>
         </div>
         {productionTrend.length > 0 ? (
-          <div className="trend-bars">
+          <div className="trend-bars production-trend-chart">
             {productionTrend.map((item) => {
               const itemDisplay = item.display ?? {};
               const producedQuantity = Number(item?.producedQuantity ?? 0);
@@ -579,7 +640,7 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
         ) : (
           <SectionEmpty description="产量趋势点暂未返回，当前不会影响其他模块展示。" />
         )}
-        {isModuleEnabled(moduleSettings, "energyOverview") ? (
+        {energyModuleOn ? (
           <div className="embedded-panel-block embedded-panel-block-fill">
             <div className="embedded-panel-header">
               <h3>区域能耗概览</h3>
@@ -588,13 +649,13 @@ function LeftScreen({ payload, errorMessage, fullscreenState, screenRef }) {
             <div className="embedded-panel-summary">
               <span>
                 {`区域 ${areaSummaries.length} 个`}
-                {shouldAutoScrollEnergySummaries ? " · 自动滚动中" : ""}
+                {energyListOverflowing ? " · 自动滚动中" : ""}
               </span>
             </div>
             {areaSummaries.length > 0 ? (
               <div
                 className={
-                  shouldAutoScrollEnergySummaries
+                  energyListOverflowing
                     ? "energy-list energy-list-embedded energy-list-scrollable"
                     : "energy-list energy-list-embedded"
                 }
@@ -668,10 +729,9 @@ function GanttBoard({ lineSchedules, schedule }) {
   const windowDates = useMemo(() => buildWindowDays(windowDays), [windowDays]);
   const windowStart = windowDates[0] ? startOfDay(windowDates[0]) : startOfDay(new Date());
   const scrollRef = useRef(null);
-  const shouldAutoScroll = Boolean(schedule?.autoScrollEnabled) && lineSchedules.length > Number(schedule?.autoScrollRowsThreshold || 0);
+  const rowsActive = lineSchedules.length > 0;
+  const rowsOverflowing = useOverflowAutoScroll(scrollRef, rowsActive);
   const totalOrders = lineSchedules.reduce((count, line) => count + (line.orders?.length ?? 0), 0);
-
-  useAutoVerticalScroll(scrollRef, shouldAutoScroll);
 
   return (
     <div className="gantt-shell">
@@ -680,7 +740,7 @@ function GanttBoard({ lineSchedules, schedule }) {
         <span>{`产线 ${lineSchedules.length} 条`}</span>
         <span>{`订单 ${totalOrders} 单`}</span>
         <span>{schedule?.display?.windowDaysLabel || `${windowDays} 天窗口`}</span>
-        <span>{shouldAutoScroll ? "超量自动纵向滚动中" : "窗口内静态展示"}</span>
+        <span>{rowsOverflowing ? "超量自动纵向滚动中" : "窗口内静态展示"}</span>
       </div>
 
       <div className="gantt-board">
@@ -727,13 +787,9 @@ function GanttBoard({ lineSchedules, schedule }) {
                             const display = order.display ?? {};
                             const accent = display.riskAccent ?? "muted";
                             const density = getGanttBarDensity(layout);
-                            const barClassName = [
-                              "gantt-bar",
-                              `accent-${accent}`,
-                              `gantt-bar--${density}`,
-                              layout.clippedStart ? "gantt-bar--clipped-start" : "",
-                              layout.clippedEnd ? "gantt-bar--clipped-end" : "",
-                            ].join(" ");
+                            const barClassName = ["gantt-bar", `accent-${accent}`, `gantt-bar--${density}`]
+                              .filter(Boolean)
+                              .join(" ");
                             const barTitle = [
                               order.orderCode,
                               order.materialCode || "-",
@@ -813,6 +869,10 @@ function RightScreen({ payload, errorMessage, fullscreenState, screenRef }) {
     [activeSections, moduleSettings],
   );
 
+  const simulationScrollRef = useRef(null);
+  const simulationScrollActive = visibleSections.includes("simulationPlaceholder");
+  const simulationOverflowing = useOverflowAutoScroll(simulationScrollRef, simulationScrollActive);
+
   const sectionNodes = {
     schedule: (
       <section className="screen-panel panel-span-8 schedule-panel" key="schedule">
@@ -837,9 +897,12 @@ function RightScreen({ payload, errorMessage, fullscreenState, screenRef }) {
       <section className="screen-panel panel-span-4 placeholder-panel simulation-panel" key="simulationPlaceholder">
         <div className="panel-header">
           <h2>3D 仿真占位区</h2>
-          <span>一期后段</span>
+          <span>
+            一期后段
+            {simulationOverflowing ? " · 自动滚动中" : ""}
+          </span>
         </div>
-        <div className="placeholder-copy placeholder-copy-wide">
+        <div className="placeholder-copy placeholder-copy-wide simulation-placeholder-body" ref={simulationScrollRef}>
           <strong>{content.simulationPlaceholder?.title || "3D 仿真待一期后段接入"}</strong>
           <p>{content.simulationPlaceholder?.description || "当前阶段只保留预留区，不阻塞一期前段大屏。"}</p>
         </div>
